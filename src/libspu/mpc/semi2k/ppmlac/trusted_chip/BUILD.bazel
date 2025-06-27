@@ -1,0 +1,77 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("//bazel:spu.bzl", "spu_cc_binary", "spu_cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+spu_cc_library(
+    name = "trusted_chip",
+    srcs = ["trusted_chip.cc"],
+    hdrs = ["trusted_chip.h"],
+    deps = [
+        ":prng",
+        "//libspu/core:prelude",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/crypto/pke:sm2_enc",
+        "@yacl//yacl/crypto/rand",
+    ],
+)
+
+spu_cc_library(
+    name = "prng",
+    srcs = ["prng.cc"],
+    hdrs = ["prng.h"],
+    deps = [
+        "//libspu/core:ndarray_ref",
+        "@yacl//yacl/crypto/tools:prg",
+    ],
+)
+
+spu_cc_binary(
+    name = "trusted_server_main",
+    srcs = ["trusted_server_main.cc"],
+    deps = [
+        ":trusted_server",
+    ],
+)
+
+spu_cc_library(
+    name = "trusted_server",
+    srcs = ["trusted_server.cc"],
+    hdrs = ["trusted_server.h"],
+    deps = [
+        ":stream_reader",
+        ":trusted_chip",
+        ":trusted_service_cc_proto",
+    ],
+)
+
+spu_cc_library(
+    name = "stream_reader",
+    hdrs = ["stream_reader.h"],
+    deps = [
+        "@brpc",
+    ],
+)
+
+cc_proto_library(
+    name = "trusted_service_cc_proto",
+    deps = [":trusted_service_proto"],
+)
+
+proto_library(
+    name = "trusted_service_proto",
+    srcs = ["trusted_service.proto"],
+)
