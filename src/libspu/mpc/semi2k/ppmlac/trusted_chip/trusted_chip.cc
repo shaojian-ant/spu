@@ -21,7 +21,7 @@
 
 namespace spu::mpc::semi2k::ppmlac {
 
-TrustedChip::TrustedChip(const std::string &asym_crypto_schema,
+TrustedChip::TrustedChip(const std::string& asym_crypto_schema,
                          yacl::ByteContainerView public_key,
                          yacl::ByteContainerView private_key)
     : asym_crypto_schema_(asym_crypto_schema),
@@ -62,6 +62,30 @@ void TrustedChip::SetupPRNG(size_t rank, yacl::ByteContainerView enc_rn) {
   const uint128_t rand_num = DecryptRandNum(enc_rn);
   const uint128_t seed = rand_num + rand_num_;
   prngs_.emplace(rank, seed);
+}
+
+BitSet TrustedChip::GenRand(size_t rank, size_t bits) {
+  BitSet bit_set(bits);
+  prngs_.at(rank).Fill(reinterpret_cast<char*>(bit_set.Data()),
+                       bit_set.SizeInBytes());
+  return bit_set;
+}
+
+std::vector<BitSet> TrustedChip::GenRand(size_t bits) {
+  std::vector<BitSet> result;
+  for (auto& [rank, prng] : prngs_) {
+    result.emplace_back(GenRand(rank, bits));
+  }
+  return result;
+}
+
+std::vector<NdArrayRef> TrustedChip::GenRand(FieldType field,
+                                            const Shape& shape) {
+  std::vector<NdArrayRef> result;
+  for (auto& [_, prng] : prngs_) {
+    result.emplace_back(prng.FillRing(field, shape));
+  }
+  return result;
 }
 
 }  // namespace spu::mpc::semi2k::ppmlac

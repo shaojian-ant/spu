@@ -29,6 +29,7 @@
 #include "libspu/mpc/semi2k/beaver/beaver_impl/ttp_server/beaver_server.h"
 #include "libspu/mpc/semi2k/exp.h"
 #include "libspu/mpc/semi2k/lowmc.h"
+#include "libspu/mpc/semi2k/ppmlac/trusted_chip/trusted_server.h"
 #include "libspu/mpc/semi2k/prime_utils.h"
 #include "libspu/mpc/semi2k/state.h"
 #include "libspu/mpc/semi2k/type.h"
@@ -754,6 +755,224 @@ TEST_P(ApiTest, TruncP_2PC) {
       return;
     }
     EXPECT_GT(comm_large, comm_small);
+  });
+}
+
+class PPMLACTest
+    : public ::testing::TestWithParam<std::tuple<FieldType, size_t>> {
+ protected:
+  void SetUp() override {
+    auto [pk, sk] = yacl::crypto::GenSm2KeyPairToPemBuf();
+    semi2k::ppmlac::TrustedServerOptions options;
+    options.port = 0;
+    options.asym_crypto_schema = "sm2";
+    options.public_key = pk;
+    options.private_key = sk;
+    server_ = semi2k::ppmlac::RunServer(options);
+  }
+
+  void TearDown() override {
+    server_->Stop(0);
+    server_.reset();
+  }
+
+  std::unique_ptr<SPUContext> makeSemi2kProtocol(
+      FieldType field, const std::shared_ptr<yacl::link::Context>& lctx) const {
+    auto [pk, sk] = yacl::crypto::GenSm2KeyPairToPemBuf();
+    RuntimeConfig conf = makeConfig(field);
+    PPMLACConfig ppmlac_conf;
+    ppmlac_conf.receiver_rank = 0;
+    if (lctx->Rank() == ppmlac_conf.receiver_rank) {
+      ppmlac_conf.server_host =
+          "127.0.0.1:" + std::to_string(server_->listen_address().port);
+    } else {
+      ppmlac_conf.asym_crypto_schema = "sm2";
+      ppmlac_conf.public_key = pk;
+      ppmlac_conf.private_key = sk;
+    }
+    conf.ppmlac_config = ppmlac_conf;
+
+    return mpc::makeSemi2kProtocol(conf, lctx);
+  }
+
+  std::unique_ptr<brpc::Server> server_;
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    Semi2k, PPMLACTest,
+    testing::Combine(testing::Values(FieldType::FM32,    //
+                                     FieldType::FM64,    //
+                                     FieldType::FM128),  //
+                     testing::Values(2, 3, 5)),          //
+    [](const testing::TestParamInfo<PPMLACTest::ParamType>& p) {
+      return fmt::format("{}x{}", std::get<0>(p.param), std::get<1>(p.param));
+    });
+
+TEST_P(PPMLACTest, MulAA) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+
+  const Shape shape = {123, 321};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    const auto p1 = rand_p(obj.get(), shape);
+    const auto p2 = rand_p(obj.get(), shape);
+    const auto x = p2a(obj.get(), p1);
+    const auto y = p2a(obj.get(), p2);
+    const auto z = mul_aa(obj.get(), x, y);
+    auto p3 = a2p(obj.get(), z);
+
+    EXPECT_EQ(p3.shape(), shape);
+    EXPECT_TRUE(ring_all_equal(p3.data(), mul_pp(obj.get(), p1, p2).data()));
+  });
+}
+
+TEST_P(PPMLACTest, SquareA) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+  const Shape shape = {123, 321};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    const auto p1 = rand_p(obj.get(), shape);
+    const auto x = p2a(obj.get(), p1);
+    const auto y = square_a(obj.get(), x);
+    auto p2 = a2p(obj.get(), y);
+
+    EXPECT_EQ(p2.shape(), shape);
+    EXPECT_TRUE(ring_all_equal(p2.data(), square_p(obj.get(), p1).data()));
+  });
+}
+
+TEST_P(PPMLACTest, MatMulAA) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+  const Shape shape_x = {123, 321};
+  const Shape shape_y = {321, 100};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    const auto p1 = rand_p(obj.get(), shape_x);
+    const auto p2 = rand_p(obj.get(), shape_y);
+    const auto x = p2a(obj.get(), p1);
+    const auto y = p2a(obj.get(), p2);
+    const auto z = mmul_aa(obj.get(), x, y);
+    auto p3 = a2p(obj.get(), z);
+
+    EXPECT_EQ(p3.shape(), Shape({shape_x.at(0), shape_y.at(1)}));
+    EXPECT_TRUE(ring_all_equal(p3.data(), mmul_pp(obj.get(), p1, p2).data()));
+  });
+}
+
+TEST_P(PPMLACTest, AndBB) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+
+  const Shape shape = {123, 321};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    const auto p1 = rand_p(obj.get(), shape);
+    const auto p2 = rand_p(obj.get(), shape);
+    const auto x = p2b(obj.get(), p1);
+    const auto y = p2b(obj.get(), p2);
+    const auto z = and_bb(obj.get(), x, y);
+    auto p3 = b2p(obj.get(), z);
+
+    EXPECT_EQ(p3.shape(), shape);
+    EXPECT_TRUE(ring_all_equal(p3.data(), and_pp(obj.get(), p1, p2).data()));
+  });
+}
+
+TEST_P(PPMLACTest, TruncA) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+
+  const Shape shape = {123, 321};
+  size_t bits = 6;
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    const auto p1 = rand_p(obj.get(), shape);
+    const auto x = p2a(obj.get(), p1);
+    const auto y = trunc_a(obj.get(), x, bits, SignType::Unknown);
+    auto p2 = a2p(obj.get(), y);
+
+    EXPECT_EQ(p2.shape(), shape);
+    EXPECT_TRUE(ring_all_equal(
+        p2.data(),
+        arshift_p(obj.get(), p1, {static_cast<int64_t>(bits)}).data()));
+  });
+}
+
+TEST_P(PPMLACTest, EqualAA) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+
+  const Shape shape = {123, 321};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    auto p = rand_p(obj.get(), shape);
+    const auto x = p2a(obj.get(), p);
+
+    DISPATCH_ALL_FIELDS(field, [&]() {
+      using T = ring2k_t;
+      NdArrayView<T> _p(p.data());
+      pforeach(shape.numel() / 2, shape.numel(),
+               [&](int64_t idx) { _p[idx] += idx; });
+      const auto y = p2a(obj.get(), p);
+      const auto z = equal_aa(obj.get(), x, y);
+      const auto p3 = b2p(obj.get(), z);
+
+      NdArrayView<T> _p3(p3.data());
+
+      for (int64_t idx = 0; idx < shape.numel() / 2; ++idx) {
+        EXPECT_EQ(_p3[idx], 1) << "idx: " << idx;
+      }
+      for (int64_t idx = shape.numel() / 2; idx < shape.numel(); ++idx) {
+        EXPECT_EQ(_p3[idx], 0) << "idx: " << idx;
+      }
+    });
+  });
+}
+
+TEST_P(PPMLACTest, EqualAP) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+
+  const Shape shape = {123, 321};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    auto p = rand_p(obj.get(), shape);
+    const auto x = p2a(obj.get(), p);
+
+    DISPATCH_ALL_FIELDS(field, [&]() {
+      using T = ring2k_t;
+      NdArrayView<T> _p(p.data());
+      pforeach(shape.numel() / 2, shape.numel(),
+               [&](int64_t idx) { _p[idx] += idx; });
+      const auto z = equal_ap(obj.get(), x, p);
+      const auto p3 = b2p(obj.get(), z);
+
+      NdArrayView<T> _p3(p3.data());
+
+      for (int64_t idx = 0; idx < shape.numel() / 2; ++idx) {
+        EXPECT_EQ(_p3[idx], 1) << "idx: " << idx;
+      }
+      for (int64_t idx = shape.numel() / 2; idx < shape.numel(); ++idx) {
+        EXPECT_EQ(_p3[idx], 0) << "idx: " << idx;
+      }
+    });
   });
 }
 

@@ -35,9 +35,27 @@ class PPMLAC {
 
   virtual void Initialize() = 0;
 
-  // TODO: need KernelEvalContext parameter?
   virtual NdArrayRef Mul(KernelEvalContext* ctx, const NdArrayRef& x,
                          const NdArrayRef& y) = 0;
+
+  virtual NdArrayRef Square(KernelEvalContext* ctx, const NdArrayRef& x) = 0;
+
+  virtual NdArrayRef MatMul(KernelEvalContext* ctx, const NdArrayRef& x,
+                            const NdArrayRef& y) = 0;
+
+  virtual NdArrayRef And(KernelEvalContext* ctx, const NdArrayRef& x,
+                         const NdArrayRef& y) = 0;
+
+  virtual NdArrayRef Trunc(KernelEvalContext* ctx, const NdArrayRef& x,
+                           size_t bits) = 0;
+
+  virtual NdArrayRef B2A(KernelEvalContext* ctx, const NdArrayRef& x) = 0;
+
+  virtual NdArrayRef Eqz(KernelEvalContext* ctx, const NdArrayRef& z) = 0;
+
+  // TODO: Change name to InvPerm?
+  virtual NdArrayRef Perm(KernelEvalContext* ctx, const NdArrayRef& x,
+                          const NdArrayRef& perm, size_t perm_rank) = 0;
 
  protected:
   std::shared_ptr<yacl::link::Context> lctx_;

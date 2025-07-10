@@ -31,11 +31,12 @@ spu_cc_library(
     srcs = ["ppmlac_receiver.cc"],
     hdrs = ["ppmlac_receiver.h"],
     deps = [
+        ":bit_set",
         ":ppmlac",
-        "//libspu/core:prelude",
         "//libspu/mpc/common:communicator",
+        "//libspu/mpc/semi2k:type",
+        "//libspu/mpc/semi2k/ppmlac/trusted_chip:stream_reader",
         "//libspu/mpc/semi2k/ppmlac/trusted_chip:trusted_service_cc_proto",
-        "@brpc",
     ],
 )
 
@@ -44,8 +45,10 @@ spu_cc_library(
     srcs = ["ppmlac_sender.cc"],
     hdrs = ["ppmlac_sender.h"],
     deps = [
+        ":bit_set",
         ":ppmlac",
         "//libspu/mpc/common:communicator",
+        "//libspu/mpc/semi2k:type",
         "//libspu/mpc/semi2k/ppmlac/trusted_chip",
     ],
 )
@@ -58,6 +61,32 @@ spu_cc_library(
         "//libspu/core:ndarray_ref",
         "@yacl//yacl/link",
     ],
+)
+
+spu_cc_library(
+    name = "bit_set",
+    srcs = ["bit_set.cc"],  # TODO: delete srcs
+    hdrs = ["bit_set.h"],
+    deps = [
+        ":utils",
+    ],
+)
+
+spu_cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        ":stream_meta",
+        "//libspu/core:prelude",
+        "@brpc",
+        "@yacl//yacl/base:buffer",
+    ],
+)
+
+spu_cc_library(
+    name = "stream_meta",
+    hdrs = ["stream_meta.h"],
 )
 
 spu_cc_test(

@@ -96,6 +96,18 @@ class AndBB : public BinaryKernel {
                   const NdArrayRef& rhs) const override;
 };
 
+class AndBB_PPMLAC : public BinaryKernel {
+ public:
+  static constexpr const char* kBindName() { return "and_bb"; }
+
+  ce::CExpr latency() const override { return ce::Const(1); }
+
+  ce::CExpr comm() const override { return ce::K() * 2 * (ce::N() - 1); }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                  const NdArrayRef& rhs) const override;
+};
+
 class XorBP : public BinaryKernel {
  public:
   static constexpr const char* kBindName() { return "xor_bp"; }

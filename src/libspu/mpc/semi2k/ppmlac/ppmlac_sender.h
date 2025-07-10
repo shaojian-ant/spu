@@ -40,6 +40,24 @@ class SenderPPMLAC : public PPMLAC {
   NdArrayRef Mul(KernelEvalContext* ctx, const NdArrayRef& x,
                  const NdArrayRef& y) override;
 
+  NdArrayRef Square(KernelEvalContext* ctx, const NdArrayRef& x) override;
+
+  NdArrayRef MatMul(KernelEvalContext* ctx, const NdArrayRef& x,
+                    const NdArrayRef& y) override;
+
+  NdArrayRef And(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                 const NdArrayRef& rhs) override;
+
+  NdArrayRef Trunc(KernelEvalContext* ctx, const NdArrayRef& x,
+                   size_t bits) override;
+
+  NdArrayRef B2A(KernelEvalContext* ctx, const NdArrayRef& x) override;
+
+  NdArrayRef Eqz(KernelEvalContext* ctx, const NdArrayRef& z) override;
+
+  NdArrayRef Perm(KernelEvalContext* ctx, const NdArrayRef& x,
+                  const NdArrayRef& perm, size_t perm_rank) override;
+
  private:
   size_t recv_rank_;
   TrustedChip chip_;

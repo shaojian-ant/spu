@@ -340,6 +340,9 @@ message RuntimeConfig {
   // low probability, which lead to huge calculation error.
   bool trunc_allow_msb_error = 73;
 
+  // PPMLAC configs
+  PPMLACConfig ppmlac_config = 74;
+
   /// System related configurations start.
 
   // Experimental: DO NOT USE
@@ -422,6 +425,27 @@ message CheetahConfig {
   bool enable_mul_lsb_error = 2;
   // Setup for cheetah ot
   CheetahOtKind ot_kind = 3;
+}
+
+message PPMLACConfig {
+  // The trusted server's remote ip:port or load-balance uri.
+  string server_host = 1;
+
+  // Which rank acts as the receiver
+  int32 receiver_rank = 2;
+
+  // asym_crypto_schema: support ["SM2"]
+  // Will support 25519 in the future, after yacl supported it.
+  string asym_crypto_schema = 3;
+
+  // Server's public key in PEM format
+  string server_public_key = 4;
+
+  // Transport protocol, support ["http", "h2"]
+  string transport_protocol = 5;
+
+  // Configurations related to SSL
+  ClientSSLConfig ssl_config = 6;
 }
 //////////////////////////////////////////////////////////////////////////
 // Compiler relate definition

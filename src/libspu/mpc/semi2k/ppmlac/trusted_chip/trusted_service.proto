@@ -51,7 +51,7 @@ message ExRandNumResponse {
 message MulRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // Input
   // x - a
@@ -64,7 +64,7 @@ message MulRequest {
 message SquareRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // Input
   // x - a
@@ -77,9 +77,9 @@ message DotRequest {
   FieldType field_type = 1;
 
   // x's shape: (M, K), y's shape: (K, N)
-  uint64 M = 2;
-  uint64 N = 3;
-  uint64 K = 4;
+  int64 M = 2;
+  int64 N = 3;
+  int64 K = 4;
 
   // Input
   // x - a
@@ -92,7 +92,7 @@ message DotRequest {
 message AndRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // output
   // z1 = x & y ^ q1
@@ -101,7 +101,7 @@ message AndRequest {
 message TruncRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // how many bits need to truncate.
   uint32 bits = 3;
@@ -116,7 +116,7 @@ message TruncRequest {
 message TruncPrRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // how many bits need to truncate.
   uint32 bits = 3;
@@ -131,7 +131,7 @@ message TruncPrRequest {
 message RandBitRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // Input
   // None
@@ -143,7 +143,7 @@ message RandBitRequest {
 message EqzRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   // Input
   // x - a
@@ -155,7 +155,7 @@ message EqzRequest {
 message PermRequest {
   FieldType field_type = 1;
 
-  uint64 num_elements = 2;
+  int64 num_elements = 2;
 
   uint64 perm_rank = 3;
 
@@ -184,8 +184,6 @@ service TrustedService {
   rpc And(AndRequest) returns (Response);
 
   rpc Trunc(TruncRequest) returns (Response);
-
-  rpc TruncPr(TruncPrRequest) returns (Response);
 
   rpc RandBit(RandBitRequest) returns (Response);
 

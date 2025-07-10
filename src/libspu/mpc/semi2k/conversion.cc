@@ -387,6 +387,18 @@ NdArrayRef EqualAA::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
   return eqz(ctx, out);
 }
 
+NdArrayRef EqualAA_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                                const NdArrayRef& rhs) const {
+  const auto* lhs_ty = lhs.eltype().as<AShrTy>();
+  const auto* rhs_ty = rhs.eltype().as<AShrTy>();
+
+  SPU_ENFORCE(lhs_ty->field() == rhs_ty->field());
+  const NdArrayRef z = ring_sub(lhs, rhs);
+
+  return ctx->getState<Semi2kState>()->ppmlac()->Eqz(ctx, z);
+}
+
+
 NdArrayRef EqualAP::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
                          const NdArrayRef& rhs) const {
   auto* comm = ctx->getState<Communicator>();
@@ -405,6 +417,25 @@ NdArrayRef EqualAP::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
   };
 
   return eqz(ctx, out);
+}
+
+NdArrayRef EqualAP_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                                const NdArrayRef& rhs) const {
+  auto* comm = ctx->getState<Communicator>();
+  const auto* lhs_ty = lhs.eltype().as<AShrTy>();
+  const auto* rhs_ty = rhs.eltype().as<Pub2kTy>();
+
+  SPU_ENFORCE(lhs_ty->field() == rhs_ty->field());
+
+  NdArrayRef z;
+  auto rank = comm->getRank();
+  if (rank == 0) {
+    z = ring_sub(lhs, rhs);
+  } else {
+    z = lhs;
+  }
+
+  return ctx->getState<Semi2kState>()->ppmlac()->Eqz(ctx, z);
 }
 
 void CommonTypeV::evaluate(KernelEvalContext* ctx) const {

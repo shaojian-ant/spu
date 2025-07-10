@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -205,6 +206,39 @@ struct CheetahConfig {
         ot_kind(ot_kind) {}
 };
 
+struct PPMLACConfig {
+  // The trusted server's remote ip:port or load-balance uri.
+  std::string server_host;
+
+  // Which rank acts as the receiver
+  size_t receiver_rank = 0;
+
+  // asym_crypto_schema: support ["SM2"]
+  // Will support 25519 in the future, after yacl supported it.
+  std::string asym_crypto_schema;
+
+  // Public key in PEM format
+  std::string public_key;
+
+  // Private key in PEM format
+  std::string private_key;
+
+  // Configurations related to SSL
+  std::optional<ClientSSLConfig> ssl_config;
+
+  PPMLACConfig() = default;
+  PPMLACConfig(std::string server_host, size_t receiver_rank,
+               std::string asym_crypto_schema, std::string public_key,
+               std::string private_key,
+               std::optional<ClientSSLConfig> ssl_config = std::nullopt)
+      : server_host(std::move(server_host)),
+        receiver_rank(receiver_rank),
+        asym_crypto_schema(std::move(asym_crypto_schema)),
+        public_key(std::move(public_key)),
+        private_key(std::move(private_key)),
+        ssl_config(std::move(ssl_config)) {}
+};
+
 // The SPU runtime configuration.
 struct RuntimeConfig {
   static const uint64_t kDefaultShareMaxChunkSize = 128 * 1024 * 1024;
@@ -381,6 +415,9 @@ struct RuntimeConfig {
 
   // Cheetah 2PC configs.
   CheetahConfig cheetah_2pc_config;
+
+  // PPMLAC configs
+  std::optional<PPMLACConfig> ppmlac_config;
 
   // For protocol like SecureML, the most significant bit may have error with
   // low probability, which lead to huge calculation error.

@@ -44,15 +44,26 @@ class ReceiverPPMLAC : public PPMLAC {
   NdArrayRef Mul(KernelEvalContext* ctx, const NdArrayRef& x,
                  const NdArrayRef& y) override;
 
+  NdArrayRef Square(KernelEvalContext* ctx, const NdArrayRef& x) override;
+
+  NdArrayRef MatMul(KernelEvalContext* ctx, const NdArrayRef& x,
+                 const NdArrayRef& y) override;
+
+  NdArrayRef And(KernelEvalContext* ctx, const NdArrayRef& x,
+                         const NdArrayRef& y) override;
+
+  NdArrayRef Trunc(KernelEvalContext* ctx, const NdArrayRef& x,
+                   size_t bits) override;
+
+  NdArrayRef B2A(KernelEvalContext* ctx, const NdArrayRef& x) override;
+
+  NdArrayRef Eqz(KernelEvalContext* ctx, const NdArrayRef& z) override;
+
+  NdArrayRef Perm(KernelEvalContext* ctx, const NdArrayRef& x,
+                  const NdArrayRef& perm, size_t perm_rank) override;
+
  private:
   void InitChannel(const Options& options);
-
-  // Query public key from the trusted server
-  std::tuple<std::string, yacl::Buffer> QueryPubKey() const;
-
-  // Exchange random number with the trusted server
-  yacl::Buffer ExRandNum(size_t rank, yacl::ByteContainerView enc_pk,
-                         yacl::ByteContainerView enc_rn) const;
 
   mutable brpc::Channel channel_;  // TODO: mutable?
 };

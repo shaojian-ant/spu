@@ -14,17 +14,12 @@
 
 #pragma once
 
-#include <cstdint>
+#include "brpc/stream.h"
 
 namespace spu::mpc::semi2k::ppmlac {
 
-constexpr size_t kUpStreamChunkSize = 50 * 1024 * 1024;    // bytes
-constexpr size_t kDownStreamChunkSize = 50 * 1024 * 1024;  // bytes
+void SendMessage(brpc::StreamId stream_id, void* message, size_t size);
 
-
-// A list of buffer streams
-struct BeaverDownStreamMeta {
-  int32_t err_code = 0;
-};
+inline size_t CeilDiv(size_t a, size_t b) { return (a + b - 1) / b; }
 
 }  // namespace spu::mpc::semi2k::ppmlac

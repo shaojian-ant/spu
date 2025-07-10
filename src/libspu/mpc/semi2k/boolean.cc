@@ -44,26 +44,6 @@ NdArrayRef makeBShare(const NdArrayRef& r, FieldType field, size_t nbits) {
   return r.as(ty);
 }
 
-// TODO: DRY
-PtType getBacktype(size_t nbits) {
-  if (nbits <= 8) {
-    return PT_U8;
-  }
-  if (nbits <= 16) {
-    return PT_U16;
-  }
-  if (nbits <= 32) {
-    return PT_U32;
-  }
-  if (nbits <= 64) {
-    return PT_U64;
-  }
-  if (nbits <= 128) {
-    return PT_U128;
-  }
-  SPU_THROW("invalid number of bits={}", nbits);
-}
-
 }  // namespace
 
 void CommonTypeB::evaluate(KernelEvalContext* ctx) const {
@@ -205,6 +185,11 @@ NdArrayRef AndBB::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
   });
 
   return out;
+}
+
+NdArrayRef AndBB_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                              const NdArrayRef& rhs) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->And(ctx, lhs, rhs);
 }
 
 NdArrayRef XorBP::proc(KernelEvalContext* ctx, const NdArrayRef& lhs,

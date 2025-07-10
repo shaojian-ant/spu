@@ -281,6 +281,11 @@ NdArrayRef MulAA::proc(KernelEvalContext* ctx, const NdArrayRef& x,
   return b.as(x.eltype());
 }
 
+NdArrayRef MulAA_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& x,
+                              const NdArrayRef& y) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->Mul(ctx, x, y);
+}
+
 NdArrayRef SquareA::proc(KernelEvalContext* ctx, const NdArrayRef& x) const {
   const auto field = x.eltype().as<Ring2k>()->field();
   auto* comm = ctx->getState<Communicator>();
@@ -321,6 +326,11 @@ NdArrayRef SquareA::proc(KernelEvalContext* ctx, const NdArrayRef& x) const {
     ring_add_(z, ring_mul(x_a, x_a));
   }
   return z.as(x.eltype());
+}
+
+NdArrayRef SquareA_PPMLAC::proc(KernelEvalContext* ctx,
+                               const NdArrayRef& x) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->Square(ctx, x);
 }
 
 // Let x be AShrTy, y be BShrTy, nbits(y) == 1
@@ -458,6 +468,11 @@ NdArrayRef MatMulAA::proc(KernelEvalContext* ctx, const NdArrayRef& x,
     ring_add_(z, ring_mmul(x_a, y_b));
   }
   return z.as(x.eltype());
+}
+
+NdArrayRef MatMulAA_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& x,
+                                 const NdArrayRef& y) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->MatMul(ctx, x, y);
 }
 
 NdArrayRef LShiftA::proc(KernelEvalContext*, const NdArrayRef& in,
@@ -704,6 +719,11 @@ NdArrayRef TruncAPr2::proc(KernelEvalContext* ctx, const NdArrayRef& in,
   });
 
   return out;
+}
+
+NdArrayRef TruncA_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& in, size_t bits,
+                        SignType sign) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->Trunc(ctx, in, bits);
 }
 
 void BeaverCacheKernel::evaluate(KernelEvalContext* ctx) const {

@@ -123,6 +123,17 @@ NdArrayRef PermAM::proc(KernelEvalContext* ctx, const NdArrayRef& in,
   return out;
 }
 
+NdArrayRef PermAM_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& in,
+                               const NdArrayRef& perm) const {
+  auto* comm = ctx->getState<Communicator>();
+
+  NdArrayRef out(in);
+  for (size_t i = 0; i < comm->getWorldSize(); ++i) {
+    out = ctx->getState<Semi2kState>()->ppmlac()->Perm(ctx, out, perm, i);
+  }
+  return out;
+}
+
 NdArrayRef PermAP::proc(KernelEvalContext* ctx, const NdArrayRef& in,
                         const NdArrayRef& perm) const {
   return applyPerm(in, perm);
@@ -139,6 +150,17 @@ NdArrayRef InvPermAM::proc(KernelEvalContext* ctx, const NdArrayRef& in,
   return out;
 }
 
+NdArrayRef InvPermAM_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& in,
+                                  const NdArrayRef& perm) const {
+  auto* comm = ctx->getState<Communicator>();
+  NdArrayRef out(in);
+  auto inv_perm = genInversePerm(perm);
+  for (int i = comm->getWorldSize() - 1; i >= 0; --i) {
+    out = ctx->getState<Semi2kState>()->ppmlac()->Perm(ctx, out, inv_perm, i);
+  }
+  return out;
+}
+
 NdArrayRef InvPermAP::proc(KernelEvalContext* ctx, const NdArrayRef& in,
                            const NdArrayRef& perm) const {
   return applyInvPerm(in, perm);
@@ -147,6 +169,12 @@ NdArrayRef InvPermAP::proc(KernelEvalContext* ctx, const NdArrayRef& in,
 NdArrayRef InvPermAV::proc(KernelEvalContext* ctx, const NdArrayRef& in,
                            const NdArrayRef& perm) const {
   return SecureInvPerm(ctx, in, perm, getOwner(perm));
+}
+
+NdArrayRef InvPermAV_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& in,
+                                  const NdArrayRef& perm) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->Perm(ctx, in, perm,
+                                                      getOwner(perm));
 }
 
 }  // namespace spu::mpc::semi2k

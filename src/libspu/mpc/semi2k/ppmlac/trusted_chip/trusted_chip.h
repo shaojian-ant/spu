@@ -21,6 +21,7 @@
 #include "yacl/base/int128.h"
 
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/prng.h"
+#include "libspu/mpc/semi2k/ppmlac/bit_set.h"
 
 namespace spu::mpc::semi2k::ppmlac {
 
@@ -53,9 +54,15 @@ class TrustedChip {
   // Setup PRNG for the given rank using the encrypted random number
   void SetupPRNG(size_t rank, yacl::ByteContainerView enc_rn);
 
-  NdArrayRef GenRnd(size_t rank, FieldType field, const Shape& shape) {
+  BitSet GenRand(size_t rank, size_t bits);
+
+  std::vector<BitSet> GenRand(size_t bits);
+
+  NdArrayRef GenRand(size_t rank, FieldType field, const Shape& shape) {
     return prngs_.at(rank).FillRing(field, shape);  // TODO: add lock
   }
+
+  std::vector<NdArrayRef> GenRand(FieldType field, const Shape& shape);
 
  private:
   std::string asym_crypto_schema_;

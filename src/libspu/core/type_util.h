@@ -293,4 +293,6 @@ enum class SignType {
 };
 std::ostream& operator<<(std::ostream& os, const SignType& sign);
 
+PtType getBacktype(size_t nbits);
+
 }  // namespace spu

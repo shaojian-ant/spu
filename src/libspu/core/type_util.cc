@@ -193,4 +193,23 @@ std::ostream& operator<<(std::ostream& os, const SignType& sign) {
   return os;
 }
 
+PtType getBacktype(size_t nbits) {
+  if (nbits <= 8) {
+    return PT_U8;
+  }
+  if (nbits <= 16) {
+    return PT_U16;
+  }
+  if (nbits <= 32) {
+    return PT_U32;
+  }
+  if (nbits <= 64) {
+    return PT_U64;
+  }
+  if (nbits <= 128) {
+    return PT_U128;
+  }
+  SPU_THROW("invalid number of bits={}", nbits);
+}
+
 }  // namespace spu

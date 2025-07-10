@@ -130,6 +130,9 @@ class Communicator : public State {
   template <typename T, template <typename> typename FN>
   std::vector<T> allReduce(absl::Span<T const> in, std::string_view tag);
 
+  template <typename T, template <typename> typename FN>
+  std::vector<T> reduce(absl::Span<T const> in, size_t root, std::string_view tag);
+
   // TODO: test me
   template <typename T>
   std::vector<T> bcast(absl::Span<T const> in, size_t root,
@@ -186,6 +189,30 @@ std::vector<T> Communicator::allReduce(absl::Span<T const> in,
     pforeach(0, in.size(), [&](int64_t idx) {
       res[idx] = fn(res[idx], (buf.data<T>())[idx]);
     });
+  }
+
+  stats_.latency += 1;
+  stats_.comm += in.size() * sizeof(T) * (lctx_->WorldSize() - 1);
+
+  return res;
+}
+
+template <typename T, template <typename> typename FN>
+std::vector<T> Communicator::reduce(absl::Span<T const> in, size_t root,
+                                       std::string_view tag) {
+  yacl::ByteContainerView bv(reinterpret_cast<uint8_t const*>(in.data()),
+                             sizeof(T) * in.size());
+  std::vector<yacl::Buffer> bufs = yacl::link::Gather(lctx_, bv, root, tag);
+  std::vector<T> res;
+  if (getRank() == root) {
+    SPU_ENFORCE(bufs.size() == getWorldSize());
+    res.resize(in.size());
+    const FN<T> fn;
+    for (const auto& buf : bufs) {
+      pforeach(0, in.size(), [&](int64_t idx) {
+        res[idx] = fn(res[idx], buf.data<T>()[idx]);
+      });
+    }
   }
 
   stats_.latency += 1;

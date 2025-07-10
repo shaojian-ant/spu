@@ -124,8 +124,42 @@ class EqualAA : public BinaryKernel {
                   const NdArrayRef& rhs) const override;
 };
 
+class EqualAA_PPMLAC : public BinaryKernel {
+public:
+  static constexpr const char* kBindName() { return "equal_aa"; }
+
+  ce::CExpr latency() const override {
+    // 1 * edabits + logk * andbb
+    return Log(ce::K()) + 1;
+  }
+
+  ce::CExpr comm() const override {
+    return (2 * Log(ce::K()) + 1) * ce::K() * (ce::N() - 1);
+  }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                  const NdArrayRef& rhs) const override;
+};
+
 class EqualAP : public BinaryKernel {
  public:
+  static constexpr const char* kBindName() { return "equal_ap"; }
+
+  ce::CExpr latency() const override {
+    // 1 * edabits + logk * andbb
+    return Log(ce::K()) + 1;
+  }
+
+  ce::CExpr comm() const override {
+    return (2 * Log(ce::K()) + 1) * ce::K() * (ce::N() - 1);
+  }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& lhs,
+                  const NdArrayRef& rhs) const override;
+};
+
+class EqualAP_PPMLAC : public BinaryKernel {
+public:
   static constexpr const char* kBindName() { return "equal_ap"; }
 
   ce::CExpr latency() const override {

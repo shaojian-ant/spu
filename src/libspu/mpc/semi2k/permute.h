@@ -41,6 +41,18 @@ class PermAM : public PermKernel {
                   const NdArrayRef& perm) const override;
 };
 
+class PermAM_PPMLAC : public PermKernel {
+public:
+  static constexpr const char* kBindName() { return "perm_am"; }
+
+  ce::CExpr latency() const override { return ce::N(); }
+
+  ce::CExpr comm() const override { return ce::N() * ce::K(); }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& in,
+                  const NdArrayRef& perm) const override;
+};
+
 class PermAP : public PermKernel {
  public:
   static constexpr const char* kBindName() { return "perm_ap"; }
@@ -65,6 +77,18 @@ class InvPermAM : public PermKernel {
                   const NdArrayRef& perm) const override;
 };
 
+class InvPermAM_PPMLAC : public PermKernel {
+public:
+  static constexpr const char* kBindName() { return "inv_perm_am"; }
+
+  ce::CExpr latency() const override { return ce::N(); }
+
+  ce::CExpr comm() const override { return ce::N() * ce::K(); }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& in,
+                  const NdArrayRef& perm) const override;
+};
+
 class InvPermAP : public PermKernel {
  public:
   static constexpr const char* kBindName() { return "inv_perm_ap"; }
@@ -79,6 +103,21 @@ class InvPermAP : public PermKernel {
 
 class InvPermAV : public PermKernel {
  public:
+  static constexpr const char* kBindName() { return "inv_perm_av"; }
+
+  // communication is unbalanced
+  Kind kind() const override { return Kind::Dynamic; }
+
+  ce::CExpr latency() const override { return ce::Const(1); }
+
+  ce::CExpr comm() const override { return ce::K(); }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& in,
+                  const NdArrayRef& perm) const override;
+};
+
+class InvPermAV_PPMLAC : public PermKernel {
+public:
   static constexpr const char* kBindName() { return "inv_perm_av"; }
 
   // communication is unbalanced

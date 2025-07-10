@@ -22,7 +22,7 @@ spu_cc_library(
     hdrs = ["trusted_chip.h"],
     deps = [
         ":prng",
-        "//libspu/core:prelude",
+        "//libspu/mpc/semi2k/ppmlac:bit_set",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/crypto/pke:sm2_enc",
         "@yacl//yacl/crypto/rand",
@@ -55,6 +55,8 @@ spu_cc_library(
         ":stream_reader",
         ":trusted_chip",
         ":trusted_service_cc_proto",
+        "//libspu/mpc/utils:ring_ops",
+        "@abseil-cpp//absl/functional:bind_front",
     ],
 )
 
