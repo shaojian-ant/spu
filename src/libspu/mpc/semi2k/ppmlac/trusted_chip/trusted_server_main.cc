@@ -12,9 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "yacl/crypto/key_utils.h"
+
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/trusted_server.h"
+
+namespace ppmlac_config {
+DEFINE_int32(port, 16866, "TCP Port of this server");
+}
 
 int main(int argc, char* argv[]) {
   spu::mpc::semi2k::ppmlac::TrustedServerOptions options;
-  spu::mpc::semi2k::ppmlac::RunServer(options);
+  options.port = ppmlac_config::FLAGS_port;
+  options.asym_crypto_schema = "sm2";
+  auto [pk, sk] = yacl::crypto::GenSm2KeyPairToPemBuf();
+  options.public_key = pk;
+  options.private_key = sk;
+  return RunUntilAskedToQuit(options);
 }

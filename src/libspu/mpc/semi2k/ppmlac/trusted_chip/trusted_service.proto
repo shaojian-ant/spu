@@ -24,7 +24,7 @@ enum ErrorCode {
 }
 
 // Field type enum matching the core SPU FieldType
-enum FieldType {
+enum Field {
   FT_INVALID = 0;
   FM32 = 1;   // Ring 2^32
   FM64 = 2;   // Ring 2^64
@@ -49,7 +49,7 @@ message ExRandNumResponse {
 }
 
 message MulRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
@@ -57,24 +57,24 @@ message MulRequest {
   // x - a
   // y - b
 
-  // output
+  // Output
   // z1 = x * y - q1
 }
 
 message SquareRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
   // Input
   // x - a
 
-  // output
+  // Output
   // z1 = x * x - q1
 }
 
 message DotRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   // x's shape: (M, K), y's shape: (K, N)
   int64 M = 2;
@@ -85,21 +85,21 @@ message DotRequest {
   // x - a
   // y - b
 
-  // output
+  // Output
   // z1 = matmul(x, y) - q1
 }
 
 message AndRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
-  // output
+  // Output
   // z1 = x & y ^ q1
 }
 
 message TruncRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
@@ -109,12 +109,12 @@ message TruncRequest {
   // Input
   // x - a
 
-  // output
+  // Output
   // z1 = x >> bits - q1
 }
 
 message TruncPrRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
@@ -124,42 +124,45 @@ message TruncPrRequest {
   // Input
   // x - a
 
-  // output
+  // Output
   // z1 = (x << 1) >> (bits + 1) - q1
 }
 
-message RandBitRequest {
-  FieldType field_type = 1;
+message B2ARequest {
+  Field field = 1;
 
   int64 num_elements = 2;
+
+  // The number of valid bits for a multi-bits storage
+  int32 bshare_nbits = 3;
 
   // Input
   // None
 
-  // output
-  // z1 = random 0/1 array - q1
+  // Output
+  // z1 = x - q1
 }
 
 message EqzRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
   // Input
-  // x - a
+  // x
 
-  // output
+  // Output
   // z1 = (x == 0) ^ q1
 }
 
 message PermRequest {
-  FieldType field_type = 1;
+  Field field = 1;
 
   int64 num_elements = 2;
 
   uint64 perm_rank = 3;
 
-  // output
+  // Output
   // z1 = Inv(x, perm) - q1
 }
 
@@ -185,9 +188,10 @@ service TrustedService {
 
   rpc Trunc(TruncRequest) returns (Response);
 
-  rpc RandBit(RandBitRequest) returns (Response);
+  rpc B2A(B2ARequest) returns (Response);
 
   rpc Eqz(EqzRequest) returns (Response);
 
+  // TODO: change name to InvPerm
   rpc Perm(PermRequest) returns (Response);
 }

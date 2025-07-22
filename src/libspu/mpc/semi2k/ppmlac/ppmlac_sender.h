@@ -19,7 +19,7 @@
 
 namespace spu::mpc::semi2k::ppmlac {
 
-class SenderPPMLAC : public PPMLAC {
+class SenderPPMLAC final : public PPMLAC {
  public:
   struct Options : PPMLAC::Options {
     std::string asym_crypto_schema;
@@ -32,8 +32,6 @@ class SenderPPMLAC : public PPMLAC {
       : PPMLAC(lctx),
         recv_rank_(options.recv_rank),
         chip_(options.asym_crypto_schema, options.pub_key, options.priv_key) {}
-
-  ~SenderPPMLAC() override = default;
 
   void Initialize() override;
 

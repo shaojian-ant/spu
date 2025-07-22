@@ -20,14 +20,14 @@
 #include "yacl/base/byte_container_view.h"
 #include "yacl/base/int128.h"
 
-#include "libspu/mpc/semi2k/ppmlac/trusted_chip/prng.h"
 #include "libspu/mpc/semi2k/ppmlac/bit_set.h"
+#include "libspu/mpc/semi2k/ppmlac/trusted_chip/prng.h"
 
 namespace spu::mpc::semi2k::ppmlac {
 
 class TrustedChip {
  public:
-  TrustedChip(const std::string& asym_crypto_schema,
+  TrustedChip(std::string asym_crypto_schema,
               yacl::ByteContainerView public_key,
               yacl::ByteContainerView private_key);
 
@@ -54,15 +54,17 @@ class TrustedChip {
   // Setup PRNG for the given rank using the encrypted random number
   void SetupPRNG(size_t rank, yacl::ByteContainerView enc_rn);
 
-  BitSet GenRand(size_t rank, size_t bits);
+  bool HasPRNG(size_t rank) const { return prngs_.count(rank) > 0; }
 
-  std::vector<BitSet> GenRand(size_t bits);
+  NdArrayRef GenRand(size_t rank, const Type& eltype, const Shape& shape);
 
-  NdArrayRef GenRand(size_t rank, FieldType field, const Shape& shape) {
-    return prngs_.at(rank).FillRing(field, shape);  // TODO: add lock
-  }
+  std::vector<NdArrayRef> GenRand(const Type& eltype, const Shape& shape);
 
-  std::vector<NdArrayRef> GenRand(FieldType field, const Shape& shape);
+  BitSet GenRandBits(size_t rank, size_t bits);
+
+  std::vector<BitSet> GenRandBits(size_t bits);
+
+  NdArrayRef GenRandPerm(size_t rank, const Shape& shape);
 
  private:
   std::string asym_crypto_schema_;

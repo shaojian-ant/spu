@@ -15,7 +15,6 @@
 #include "libspu/mpc/semi2k/ppmlac/utils.h"
 
 #include "spdlog/spdlog.h"
-#include "stream_meta.h"
 
 #include "libspu/core/prelude.h"
 

@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel:spu.bzl", "spu_cc_library", "spu_cc_test")
+load("//bazel:spu.bzl", "spu_cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
 spu_cc_library(
-    name = "ppmlac_factory",
-    srcs = ["ppmlac_factory.cc"],
-    hdrs = ["ppmlac_factory.h"],
+    name = "ppmlac",
+    hdrs = ["ppmlac.h"],
     deps = [
-        ":ppmlac_receiver",
-        ":ppmlac_sender",
+        "//libspu/core:context",
+        "//libspu/core:ndarray_ref",
+        "@yacl//yacl/link",
     ],
 )
 
@@ -54,18 +54,7 @@ spu_cc_library(
 )
 
 spu_cc_library(
-    name = "ppmlac",
-    hdrs = ["ppmlac.h"],
-    deps = [
-        "//libspu/core:context",
-        "//libspu/core:ndarray_ref",
-        "@yacl//yacl/link",
-    ],
-)
-
-spu_cc_library(
     name = "bit_set",
-    srcs = ["bit_set.cc"],  # TODO: delete srcs
     hdrs = ["bit_set.h"],
     deps = [
         ":utils",
@@ -84,17 +73,8 @@ spu_cc_library(
     ],
 )
 
+# TODO: delete me
 spu_cc_library(
     name = "stream_meta",
     hdrs = ["stream_meta.h"],
-)
-
-spu_cc_test(
-    name = "ppmlac_test",
-    srcs = ["ppmlac_test.cc"],
-    deps = [
-        ":ppmlac_factory",
-        "//libspu/mpc/semi2k/ppmlac/trusted_chip:trusted_server",
-        "//libspu/mpc/utils:simulate",
-    ],
 )

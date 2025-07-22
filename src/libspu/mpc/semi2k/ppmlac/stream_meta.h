@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <cstdint>
-
 namespace spu::mpc::semi2k::ppmlac {
 
 constexpr size_t kUpStreamChunkSize = 50 * 1024 * 1024;    // bytes

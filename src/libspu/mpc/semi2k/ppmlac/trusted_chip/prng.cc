@@ -16,6 +16,8 @@
 
 #include "yacl/crypto/tools/prg.h"
 
+#include "libspu/mpc/utils/permute.h"
+
 namespace spu::mpc::semi2k::ppmlac {
 
 // Fill the output with generated randomness
@@ -24,10 +26,14 @@ void PRNG::Fill(char* buf, size_t len) {
                                      absl::MakeSpan(buf, len));
 }
 
-NdArrayRef PRNG::FillRing(FieldType field, const Shape& shape) {
-  NdArrayRef ret(makeType<RingTy>(field), shape);
+NdArrayRef PRNG::FillRing(const Type& eltype, const Shape& shape) {
+  NdArrayRef ret(eltype, shape);
   Fill(ret.data<char>(), ret.buf()->size());
   return ret;
+}
+
+Index PRNG::GenRandomPerm(size_t numel) {
+  return genRandomPerm(numel, seed_, &counter_);
 }
 
 }  // namespace spu::mpc::semi2k::ppmlac

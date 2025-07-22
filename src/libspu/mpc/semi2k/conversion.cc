@@ -268,6 +268,10 @@ std::vector<NdArrayRef> B2A_Disassemble::proc(KernelEvalContext* ctx,
   return res;
 }
 
+NdArrayRef B2A_PPMLAC::proc(KernelEvalContext* ctx, const NdArrayRef& x) const {
+  return ctx->getState<Semi2kState>()->ppmlac()->B2A(ctx, x);
+}
+
 NdArrayRef MsbA2B::proc(KernelEvalContext* ctx, const NdArrayRef& in) const {
   const auto field = in.eltype().as<Ring2k>()->field();
   auto* comm = ctx->getState<Communicator>();

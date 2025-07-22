@@ -149,7 +149,7 @@ class MulAA : public BinaryKernel {
 };
 
 class MulAA_PPMLAC : public BinaryKernel {
-public:
+ public:
   static constexpr const char* kBindName() { return "mul_aa"; }
 
   ce::CExpr latency() const override {
@@ -179,7 +179,7 @@ class SquareA : public UnaryKernel {
 };
 
 class SquareA_PPMLAC : public UnaryKernel {
-public:
+ public:
   static constexpr const char* kBindName() { return "square_a"; }
 
   ce::CExpr latency() const override {
@@ -209,6 +209,11 @@ class MulA1B : public BinaryKernel {
                   const NdArrayRef& y) const override;
 };
 
+class MulA1B_PPMLAC : public MulAA_PPMLAC {
+ public:
+  static constexpr const char* kBindName() { return "mul_a1b"; }
+};
+
 // Note: quick pass only for 2PC
 class MulVVS : public BinaryKernel {
  public:
@@ -220,6 +225,11 @@ class MulVVS : public BinaryKernel {
 
   NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& x,
                   const NdArrayRef& y) const override;
+};
+
+class MulVVS_PPMLAC : public MulAA_PPMLAC {
+ public:
+  static constexpr const char* kBindName() { return "mul_vvs"; }
 };
 
 ////////////////////////////////////////////////////////////////////
@@ -258,7 +268,7 @@ class MatMulAA : public MatmulKernel {
 };
 
 class MatMulAA_PPMLAC : public MatmulKernel {
-public:
+ public:
   static constexpr const char* kBindName() { return "mmul_aa"; }
 
   ce::CExpr latency() const override {
@@ -369,7 +379,7 @@ class TruncAPr2 : public TruncAKernel {
 };
 
 class TruncA_PPMLAC : public TruncAKernel {
-public:
+ public:
   static constexpr const char* kBindName() { return "trunc_a"; }
 
   Kind kind() const override { return Kind::Dynamic; }

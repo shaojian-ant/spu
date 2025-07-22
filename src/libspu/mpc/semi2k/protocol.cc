@@ -56,25 +56,26 @@ void regSemi2kProtocol(SPUContext* ctx,
           semi2k::AddAP, semi2k::AddAA, semi2k::MulAP, semi2k::MatMulAP,
           semi2k::LShiftA, semi2k::LShiftB, semi2k::RShiftB, semi2k::ARShiftB,
           semi2k::CommonTypeB, semi2k::CommonTypeV, semi2k::CastTypeB,
-          semi2k::B2P, semi2k::P2B, semi2k::A2B, semi2k::B2A_Randbit,
-          semi2k::B2A_Disassemble, semi2k::AndBP, semi2k::XorBP, semi2k::XorBB,
-          semi2k::BitrevB, semi2k::BitIntlB, semi2k::BitDeintlB, semi2k::RandA,
-          semi2k::RandB, semi2k::RandPermM, semi2k::PermAP, semi2k::InvPermAP,
-          semi2k::BeaverCacheKernel>();
+          semi2k::B2P, semi2k::P2B, semi2k::A2B, semi2k::AndBP, semi2k::XorBP,
+          semi2k::XorBB, semi2k::BitrevB, semi2k::BitIntlB, semi2k::BitDeintlB,
+          semi2k::RandA, semi2k::RandB, semi2k::RandPermM, semi2k::PermAP,
+          semi2k::InvPermAP, semi2k::BeaverCacheKernel>();
 
   if (ctx->config().ppmlac_config.has_value()) {
     // ctx->prot()->addState<PPMLACState>(ctx->config().ppmlac_config.value());
     ctx->prot()
         ->regKernel<semi2k::MulAA_PPMLAC, semi2k::SquareA_PPMLAC,
                     semi2k::MatMulAA_PPMLAC, semi2k::AndBB_PPMLAC,
-                    semi2k::TruncA_PPMLAC, semi2k::EqualAA_PPMLAC,
+                    semi2k::TruncA_PPMLAC, semi2k::B2A_PPMLAC,
+                    semi2k::B2A_PPMLAC_Disassemble, semi2k::EqualAA_PPMLAC,
                     semi2k::EqualAP_PPMLAC, semi2k::PermAM_PPMLAC,
                     semi2k::InvPermAM_PPMLAC, semi2k::InvPermAV_PPMLAC>();
   } else {
     ctx->prot()
         ->regKernel<semi2k::MulAA, semi2k::SquareA, semi2k::MatMulAA,
-                    semi2k::AndBB, semi2k::EqualAA, semi2k::EqualAP,
-                    semi2k::PermAM, semi2k::InvPermAM, semi2k::InvPermAV>();
+                    semi2k::AndBB, semi2k::B2A_Randbit, semi2k::B2A_Disassemble,
+                    semi2k::EqualAA, semi2k::EqualAP, semi2k::PermAM,
+                    semi2k::InvPermAM, semi2k::InvPermAV>();
     if (ctx->config().trunc_allow_msb_error) {
       ctx->prot()->regKernel<semi2k::TruncA>();
     } else {

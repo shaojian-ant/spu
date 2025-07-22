@@ -30,7 +30,9 @@ class PRNG {
   // Fill the output with generated randomness
   void Fill(char* buf, size_t len);
 
-  NdArrayRef FillRing(FieldType field, const Shape& shape);
+  NdArrayRef FillRing(const Type& eltype, const Shape& shape);
+
+  Index GenRandomPerm(size_t numel);
 
  private:
   uint128_t seed_ = 0;

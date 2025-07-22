@@ -35,6 +35,7 @@ spu_cc_library(
     hdrs = ["prng.h"],
     deps = [
         "//libspu/core:ndarray_ref",
+        "//libspu/mpc/utils:permute",
         "@yacl//yacl/crypto/tools:prg",
     ],
 )
@@ -55,6 +56,7 @@ spu_cc_library(
         ":stream_reader",
         ":trusted_chip",
         ":trusted_service_cc_proto",
+        "//libspu/mpc/semi2k:type",
         "//libspu/mpc/utils:ring_ops",
         "@abseil-cpp//absl/functional:bind_front",
     ],

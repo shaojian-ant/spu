@@ -30,8 +30,9 @@ class StreamReader : public brpc::StreamInputHandler {
     kStreamFailed,
   };
 
-  explicit StreamReader(const std::vector<size_t>& buf_lens)
-      : buf_lens_(buf_lens) {
+  explicit StreamReader(absl::Span<const size_t> buf_lens)
+      : buf_lens_(buf_lens.begin(), buf_lens.end()) {
+    SPU_ENFORCE(!buf_lens_.empty());
     future_finished_ = promise_finished_.get_future();
     future_closed_ = promise_closed_.get_future();
     buf_vec_.emplace_back();
@@ -47,8 +48,8 @@ class StreamReader : public brpc::StreamInputHandler {
         return 1;
       }
       butil::IOBuf& buf = buf_vec_.back();
-      size_t max_buf_size = buf_lens_[buf_vec_.size() - 1];
       buf.append(message->movable());
+      size_t max_buf_size = buf_lens_[buf_vec_.size() - 1];
       if (buf.size() > max_buf_size) {
         SPDLOG_ERROR("received overlong message, {} > {}", buf.size(),
                      max_buf_size);
@@ -88,7 +89,7 @@ class StreamReader : public brpc::StreamInputHandler {
   }
 
   Status WaitFinished() { return future_finished_.get(); }
-  void WaitClosed() { future_closed_.wait(); }
+  void WaitClosed() const { future_closed_.wait(); }
 
  private:
   std::vector<butil::IOBuf> buf_vec_;

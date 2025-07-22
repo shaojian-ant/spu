@@ -778,7 +778,6 @@ class PPMLACTest
 
   std::unique_ptr<SPUContext> makeSemi2kProtocol(
       FieldType field, const std::shared_ptr<yacl::link::Context>& lctx) const {
-    auto [pk, sk] = yacl::crypto::GenSm2KeyPairToPemBuf();
     RuntimeConfig conf = makeConfig(field);
     PPMLACConfig ppmlac_conf;
     ppmlac_conf.receiver_rank = 0;
@@ -786,6 +785,7 @@ class PPMLACTest
       ppmlac_conf.server_host =
           "127.0.0.1:" + std::to_string(server_->listen_address().port);
     } else {
+      auto [pk, sk] = yacl::crypto::GenSm2KeyPairToPemBuf();
       ppmlac_conf.asym_crypto_schema = "sm2";
       ppmlac_conf.public_key = pk;
       ppmlac_conf.private_key = sk;
@@ -795,6 +795,7 @@ class PPMLACTest
     return mpc::makeSemi2kProtocol(conf, lctx);
   }
 
+ private:
   std::unique_ptr<brpc::Server> server_;
 };
 
@@ -908,6 +909,25 @@ TEST_P(PPMLACTest, TruncA) {
     EXPECT_TRUE(ring_all_equal(
         p2.data(),
         arshift_p(obj.get(), p1, {static_cast<int64_t>(bits)}).data()));
+  });
+}
+
+TEST_P(PPMLACTest, B2A) {
+  const auto& field = std::get<0>(GetParam());
+  const size_t npc = std::get<1>(GetParam());
+
+  const Shape shape = {123, 321};
+
+  utils::simulate(npc, [&](const std::shared_ptr<yacl::link::Context>& lctx) {
+    auto obj = makeSemi2kProtocol(field, lctx);
+
+    const auto p1 = rand_p(obj.get(), shape);
+    const auto x = p2b(obj.get(), p1);
+    const auto z = b2a(obj.get(), x);
+    auto p2 = a2p(obj.get(), z);
+
+    EXPECT_EQ(p2.shape(), shape);
+    EXPECT_TRUE(ring_all_equal(p1.data(), p2.data()));
   });
 }
 

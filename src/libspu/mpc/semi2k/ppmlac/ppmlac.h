@@ -25,7 +25,7 @@ class PPMLAC {
  public:
   struct Options {
     virtual ~Options() = default;
-    size_t recv_rank;  // the rank of receiver in one-way communication
+    size_t recv_rank = 0;  // the rank of receiver in one-way communication
   };
 
   explicit PPMLAC(const std::shared_ptr<yacl::link::Context>& lctx)

@@ -14,6 +14,8 @@
 
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/trusted_chip.h"
 
+#include <utility>
+
 #include "yacl/crypto/pke/sm2_enc.h"
 #include "yacl/crypto/rand/rand.h"
 
@@ -21,10 +23,10 @@
 
 namespace spu::mpc::semi2k::ppmlac {
 
-TrustedChip::TrustedChip(const std::string& asym_crypto_schema,
+TrustedChip::TrustedChip(std::string asym_crypto_schema,
                          yacl::ByteContainerView public_key,
                          yacl::ByteContainerView private_key)
-    : asym_crypto_schema_(asym_crypto_schema),
+    : asym_crypto_schema_(std::move(asym_crypto_schema)),
       public_key_(public_key),
       private_key_(private_key) {
   rand_num_ = yacl::crypto::SecureRandU128();
@@ -32,14 +34,15 @@ TrustedChip::TrustedChip(const std::string& asym_crypto_schema,
 
 yacl::Buffer TrustedChip::EncryptPubKey(yacl::ByteContainerView pub_key) const {
   yacl::crypto::Sm2Encryptor encryptor(pub_key);
-  auto enc_pk = encryptor.Encrypt(public_key_);
+  std::vector<uint8_t> enc_pk = encryptor.Encrypt(public_key_);
   return {enc_pk.data(), enc_pk.size()};
 }
 
 yacl::Buffer TrustedChip::EncryptRandNum(
     yacl::ByteContainerView pub_key) const {
   yacl::crypto::Sm2Encryptor encryptor(pub_key);
-  auto enc_rn = encryptor.Encrypt({&rand_num_, sizeof(rand_num_)});
+  std::vector<uint8_t> enc_rn =
+      encryptor.Encrypt({&rand_num_, sizeof(rand_num_)});
   return {enc_rn.data(), enc_rn.size()};
 }
 
@@ -64,28 +67,46 @@ void TrustedChip::SetupPRNG(size_t rank, yacl::ByteContainerView enc_rn) {
   prngs_.emplace(rank, seed);
 }
 
-BitSet TrustedChip::GenRand(size_t rank, size_t bits) {
+NdArrayRef TrustedChip::GenRand(size_t rank, const Type& eltype,
+                                const Shape& shape) {
+  return prngs_.at(rank).FillRing(eltype, shape);  // TODO: add lock
+}
+
+std::vector<NdArrayRef> TrustedChip::GenRand(const Type& eltype,
+                                             const Shape& shape) {
+  std::vector<NdArrayRef> result;
+  for (auto& [_, prng] : prngs_) {
+    result.emplace_back(prng.FillRing(eltype, shape));
+  }
+  return result;
+}
+
+BitSet TrustedChip::GenRandBits(size_t rank, size_t bits) {
   BitSet bit_set(bits);
   prngs_.at(rank).Fill(reinterpret_cast<char*>(bit_set.Data()),
                        bit_set.SizeInBytes());
   return bit_set;
 }
 
-std::vector<BitSet> TrustedChip::GenRand(size_t bits) {
+std::vector<BitSet> TrustedChip::GenRandBits(size_t bits) {
   std::vector<BitSet> result;
   for (auto& [rank, prng] : prngs_) {
-    result.emplace_back(GenRand(rank, bits));
+    result.emplace_back(GenRandBits(rank, bits));
   }
   return result;
 }
 
-std::vector<NdArrayRef> TrustedChip::GenRand(FieldType field,
-                                            const Shape& shape) {
-  std::vector<NdArrayRef> result;
-  for (auto& [_, prng] : prngs_) {
-    result.emplace_back(prng.FillRing(field, shape));
-  }
-  return result;
+NdArrayRef TrustedChip::GenRandPerm(size_t rank, const Shape& shape) {
+  const Index pv = prngs_.at(rank).GenRandomPerm(shape.numel());
+  NdArrayRef out(makeType<RingTy>(FieldType::FM64), shape);
+  const FieldType field = out.eltype().as<Ring2k>()->field();
+  DISPATCH_ALL_FIELDS(field, [&]() {
+    NdArrayView<ring2k_t> _out(out);
+    pforeach(0, out.numel(),
+             [&](int64_t idx) { _out[idx] = ring2k_t(pv[idx]); });
+  });
+
+  return out;
 }
 
 }  // namespace spu::mpc::semi2k::ppmlac

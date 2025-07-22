@@ -14,7 +14,6 @@
 
 #include "libspu/mpc/semi2k/ppmlac/ppmlac_receiver.h"
 
-#include "stream_meta.h"
 #include "trusted_chip/stream_reader.h"
 
 #include "libspu/core/prelude.h"
@@ -22,9 +21,15 @@
 #include "libspu/mpc/semi2k/ppmlac/bit_set.h"
 #include "libspu/mpc/semi2k/ppmlac/utils.h"
 #include "libspu/mpc/semi2k/type.h"
-#include "libspu/mpc/utils/ring_ops.h"
 
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/trusted_service.pb.h"
+
+namespace brpc {
+
+DECLARE_uint64(max_body_size);
+DECLARE_int64(socket_max_unwritten_bytes);
+
+}  // namespace brpc
 
 namespace spu::mpc::semi2k::ppmlac {
 
@@ -62,49 +67,54 @@ yacl::Buffer ExRandNum(brpc::Channel& channel, size_t rank,
 }
 
 template <typename Request, typename... Args>
-Request BuildRequest(absl::Span<NdArrayRef> inputs, Args&&... args) {
+Request BuildRequest(FieldType field, const Shape& shape, Args&&... args) {
   Request req;
-  req.set_field_type(
-      static_cast<FieldType>(inputs.front().eltype().as<Ring2k>()->field()));
+  req.set_field(static_cast<Field>(field));
   if constexpr (std::is_same_v<Request, DotRequest>) {
-    SPU_ENFORCE(inputs.size() == 2, "Dot only support 2 inputs");
-    req.set_m(inputs.front().shape().at(0));
-    req.set_k(inputs.front().shape().at(1));
-    req.set_n(inputs.back().shape().at(1));
+    req.set_m(shape.at(0));
+    req.set_n(shape.at(1));
+    req.set_k(shape.at(2));
   } else if constexpr (std::is_same_v<Request, TruncRequest>) {
-    req.set_num_elements(inputs.front().numel());
+    req.set_num_elements(shape.numel());
     req.set_bits(args...);
+  } else if constexpr (std::is_same_v<Request, B2ARequest>) {
+    req.set_num_elements(shape.numel());
+    req.set_bshare_nbits(args...);
+  } else if constexpr (std::is_same_v<Request, PermRequest>) {
+    req.set_num_elements(shape.numel());
+    req.set_perm_rank(args...);
   } else {
-    req.set_num_elements(inputs.front().numel());
+    req.set_num_elements(shape.numel());
   }
   return req;
 }
 
 template <typename Request>
-Shape GetReturnShape(absl::Span<NdArrayRef> inputs) {
+Shape GetReturnShape(const Shape& shape) {
   if constexpr (std::is_same_v<Request, DotRequest>) {
-    SPU_ENFORCE_EQ(inputs.size(), 2U, "Dot only support 2 inputs");
-    return {inputs.front().shape().at(0), inputs.back().shape().at(1)};
+    const int64_t m = shape.at(0);
+    const int64_t n = shape.at(1);
+    return {m, n};
   } else {
-    SPU_ENFORCE_GT(inputs.size(), 0U, "Dot only support 0 inputs");
-    return {inputs.front().shape()};
+    return shape;
   }
 }
 
 template <typename Request>
-size_t GetReturnBufferLength(const Request& req) {
-  const auto field_size = SizeOf(static_cast<spu::FieldType>(req.field_type()));
+size_t GetReturnBufferLength(FieldType field, const Shape& shape) {
   if constexpr (std::is_same_v<Request, DotRequest>) {
-    return field_size * req.m() * req.n();
+    const int64_t m = shape.at(0);
+    const int64_t n = shape.at(1);
+    return SizeOf(field) * m * n;
   } else if constexpr (std::is_same_v<Request, EqzRequest>) {
-    return CeilDiv(req.num_elements(), 8);
+    return CeilDiv(shape.numel(), 8);
   } else {
-    return {field_size * req.num_elements()};
+    return {SizeOf(field) * shape.numel()};
   }
 }
 
 template <typename Request>
-NdArrayRef GenerateReturnArray(const butil::IOBuf& buf, spu::FieldType field,
+NdArrayRef GenerateReturnArray(const butil::IOBuf& buf, FieldType field,
                                const Shape& shape) {
   if constexpr (std::is_same_v<Request, EqzRequest>) {
     NdArrayRef out(makeType<BShrTy>(field), shape);
@@ -130,13 +140,12 @@ using RpcFunc = void (TrustedService_Stub::*)(
     ::google::protobuf::Closure*);
 
 template <typename Request, typename... Args>
-NdArrayRef RpcCall(RpcFunc<Request> pf, brpc::Channel& channel,
-                   absl::Span<NdArrayRef> inputs, Args&&... args) {
+NdArrayRef RpcCall(RpcFunc<Request> pf, brpc::Channel& channel, FieldType field,
+                   const Shape& shape, absl::Span<NdArrayRef> inputs,
+                   Args&&... args) {
   brpc::Controller cntl;
   brpc::StreamId stream_id;
-  auto request = BuildRequest<Request>(inputs, std::forward<Args>(args)...);
-  auto field = inputs.front().eltype().as<Ring2k>()->field();
-  StreamReader reader({GetReturnBufferLength(request)});
+  StreamReader reader({GetReturnBufferLength<Request>(field, shape)});
   brpc::StreamOptions stream_options;
   stream_options.max_buf_size = 0;  // there's no limit of buf size
   stream_options.handler = &reader;
@@ -146,6 +155,8 @@ NdArrayRef RpcCall(RpcFunc<Request> pf, brpc::Channel& channel,
 
   Response response;
   TrustedService_Stub stub(&channel);
+  auto request =
+      BuildRequest<Request>(field, shape, std::forward<Args>(args)...);
   (stub.*pf)(&cntl, &request, &response, nullptr);
   SPU_ENFORCE(!cntl.Failed(),
               "Mul RpcCall failed, cntl.ErrorCode={} cntl.ErrorText={}",
@@ -165,7 +176,7 @@ NdArrayRef RpcCall(RpcFunc<Request> pf, brpc::Channel& channel,
   SPU_ENFORCE_EQ(brpc::StreamClose(stream_id), 0);
   const auto& bufs = reader.GetBufVecRef();
   auto z = GenerateReturnArray<Request>(bufs.at(0), field,
-                                        GetReturnShape<Request>(inputs));
+                                        GetReturnShape<Request>(shape));
   reader.WaitClosed();  // TODO: move it
   return z;
 }
@@ -173,22 +184,21 @@ NdArrayRef RpcCall(RpcFunc<Request> pf, brpc::Channel& channel,
 }  // namespace
 
 void ReceiverPPMLAC::InitChannel(const Options& options) {
-  // brpc::FLAGS_max_body_size = std::numeric_limits<uint64_t>::max();
-  // brpc::FLAGS_socket_max_unwritten_bytes =
-  //     std::numeric_limits<int64_t>::max() / 2;
-  brpc::ChannelOptions brc_options;
-  SPU_ENFORCE(options.brpc_channel_protocol == "baidu_std" ||
-                  options.brpc_channel_protocol == "h2",
-              "Only support baidu_std or http 2");
-  brc_options.protocol = options.brpc_channel_protocol;
-  brc_options.timeout_ms = options.brpc_timeout_ms;
-  brc_options.max_retry = options.brpc_max_retry;
+  brpc::FLAGS_max_body_size = std::numeric_limits<uint64_t>::max();
+  brpc::FLAGS_socket_max_unwritten_bytes =
+      std::numeric_limits<int64_t>::max() / 2;
+  brpc::ChannelOptions brpc_options;
+  SPU_ENFORCE(options.brpc_channel_protocol == "baidu_std",
+              "Only the baidu_std protocol is supported for brpc streaming");
+  brpc_options.protocol = options.brpc_channel_protocol;
+  brpc_options.timeout_ms = options.brpc_timeout_ms;
+  brpc_options.max_retry = options.brpc_max_retry;
 
   if (options.brpc_ssl_options) {
-    *brc_options.mutable_ssl_options() = options.brpc_ssl_options.value();
+    *brpc_options.mutable_ssl_options() = options.brpc_ssl_options.value();
   }
 
-  if (channel_.Init(options.trusted_server_host.c_str(), &brc_options) != 0) {
+  if (channel_.Init(options.trusted_server_host.c_str(), &brpc_options) != 0) {
     SPU_THROW("Fail to initialize channel for PPMLAC receiver, server_host {}",
               options.trusted_server_host);
   }
@@ -229,28 +239,38 @@ void ReceiverPPMLAC::Initialize() {
 NdArrayRef ReceiverPPMLAC::Mul(KernelEvalContext* ctx, const NdArrayRef& x,
                                const NdArrayRef& y) {
   auto* comm = ctx->getState<Communicator>();
+  const auto field = x.eltype().as<Ring2k>()->field();
   auto inputs = vmap({x, y}, [&](const NdArrayRef& s) {
     return comm->reduce(ReduceOp::ADD, s, comm->getRank(), "recv(x-a,y-b)");
   });
 
-  return RpcCall(&TrustedService_Stub::Mul, channel_, absl::MakeSpan(inputs));
+  return RpcCall(&TrustedService_Stub::Mul, channel_, field, x.shape(),
+                 absl::MakeSpan(inputs));
 }
 
 NdArrayRef ReceiverPPMLAC::Square(KernelEvalContext* ctx, const NdArrayRef& x) {
   auto* comm = ctx->getState<Communicator>();
-  auto u = comm->reduce(ReduceOp::ADD, x, comm->getRank(), "recv(x-a)");
+  const auto field = x.eltype().as<Ring2k>()->field();
+  NdArrayRef u = comm->reduce(ReduceOp::ADD, x, comm->getRank(), "recv(x-a)");
 
-  return RpcCall(&TrustedService_Stub::Square, channel_, absl::MakeSpan(&u, 1));
+  return RpcCall(&TrustedService_Stub::Square, channel_, field, x.shape(),
+                 absl::MakeSpan(&u, 1));
 }
 
 NdArrayRef ReceiverPPMLAC::MatMul(KernelEvalContext* ctx, const NdArrayRef& x,
                                   const NdArrayRef& y) {
   auto* comm = ctx->getState<Communicator>();
+  const auto field = x.eltype().as<Ring2k>()->field();
   auto inputs = vmap({x, y}, [&](const NdArrayRef& s) {
     return comm->reduce(ReduceOp::ADD, s, comm->getRank(), "recv(x-a,y-b)");
   });
 
-  return RpcCall(&TrustedService_Stub::Dot, channel_, absl::MakeSpan(inputs));
+  const int64_t m = x.shape().at(0);
+  const int64_t n = y.shape().at(1);
+  const int64_t k = x.shape().at(1);
+
+  return RpcCall(&TrustedService_Stub::Dot, channel_, field, {m, n, k},
+                 absl::MakeSpan(inputs));
 }
 
 NdArrayRef ReceiverPPMLAC::And(KernelEvalContext* ctx, const NdArrayRef& lhs,
@@ -268,8 +288,7 @@ NdArrayRef ReceiverPPMLAC::And(KernelEvalContext* ctx, const NdArrayRef& lhs,
   const PtType backtype = getBacktype(out_nbits);
   const int64_t numel = lhs.numel();
 
-  int64_t num128 =
-      CeilDiv(numel * SizeOf(backtype), SizeOf(spu::FieldType::FM128));
+  int64_t num128 = CeilDiv(numel * SizeOf(backtype), SizeOf(FieldType::FM128));
 
   NdArrayRef out(makeType<BShrTy>(field, out_nbits), lhs.shape());
   DISPATCH_ALL_FIELDS(field, [&]() {
@@ -287,8 +306,8 @@ NdArrayRef ReceiverPPMLAC::And(KernelEvalContext* ctx, const NdArrayRef& lhs,
           comm->reduce<V, std::bit_xor>(mask, comm->getRank(), "open(x^a,y^b)");
 
       std::vector<NdArrayRef> inputs = {
-          NdArrayRef(makeType<RingTy>(spu::FieldType::FM128), {num128}),
-          NdArrayRef(makeType<RingTy>(spu::FieldType::FM128), {num128})};
+          NdArrayRef(makeType<RingTy>(FieldType::FM128), {num128}),
+          NdArrayRef(makeType<RingTy>(FieldType::FM128), {num128})};
 
       // first half mask x^a, second half mask y^b.
       pforeach(0, numel, [&](int64_t idx) {
@@ -296,11 +315,11 @@ NdArrayRef ReceiverPPMLAC::And(KernelEvalContext* ctx, const NdArrayRef& lhs,
         inputs[1].data<V>()[idx] = _rhs[idx] ^ mask[numel + idx];
       });
 
-      auto ret =
-          RpcCall(&TrustedService_Stub::And, channel_, absl::MakeSpan(inputs));
+      auto ret = RpcCall(&TrustedService_Stub::And, channel_, FieldType::FM128,
+                         {num128}, absl::MakeSpan(inputs));
 
-      NdArrayView<T> _z(out);
-      pforeach(0, numel, [&](int64_t idx) { _z[idx] = ret.data<V>()[idx]; });
+      NdArrayView<T> _out(out);
+      pforeach(0, numel, [&](int64_t idx) { _out[idx] = ret.data<V>()[idx]; });
     });
   });
 
@@ -310,30 +329,66 @@ NdArrayRef ReceiverPPMLAC::And(KernelEvalContext* ctx, const NdArrayRef& lhs,
 NdArrayRef ReceiverPPMLAC::Trunc(KernelEvalContext* ctx, const NdArrayRef& x,
                                  size_t bits) {
   auto* comm = ctx->getState<Communicator>();
-  auto u = comm->reduce(ReduceOp::ADD, x, comm->getRank(), "recv(x-a)");
+  const auto field = x.eltype().as<Ring2k>()->field();
+  NdArrayRef u = comm->reduce(ReduceOp::ADD, x, comm->getRank(), "recv(x-a)");
 
-  return RpcCall(&TrustedService_Stub::Trunc, channel_, absl::MakeSpan(&u, 1),
-                 bits);
+  return RpcCall(&TrustedService_Stub::Trunc, channel_, field, x.shape(),
+                 absl::MakeSpan(&u, 1), bits);
 }
 
 NdArrayRef ReceiverPPMLAC::B2A(KernelEvalContext* ctx, const NdArrayRef& x) {
-  return x;
+  auto* comm = ctx->getState<Communicator>();
+  const auto field = x.eltype().as<Ring2k>()->field();
+  const size_t out_nbits = x.eltype().as<BShrTy>()->nbits();
+  const PtType backtype = getBacktype(out_nbits);
+  const int64_t numel = x.numel();
+
+  int64_t num128 = CeilDiv(numel * SizeOf(backtype), SizeOf(FieldType::FM128));
+  NdArrayRef u(makeType<RingTy>(FieldType::FM128), {num128});
+
+  DISPATCH_ALL_FIELDS(field, [&]() {
+    using T = ring2k_t;
+    NdArrayView<T> _x(x);
+
+    DISPATCH_UINT_PT_TYPES(backtype, [&]() {
+      using V = ScalarT;
+      NdArrayView<V> _u(u);
+
+      std::vector<V> mask(numel, 0);
+      mask = comm->reduce<V, std::bit_xor>(mask, comm->getRank(), "open(x^a)");
+
+      pforeach(0, numel, [&](int64_t idx) { _u[idx] = _x[idx] ^ mask[idx]; });
+    });
+  });
+
+  return RpcCall(&TrustedService_Stub::B2A, channel_, field, x.shape(),
+                 absl::MakeSpan(&u, 1), out_nbits);
 }
 
 NdArrayRef ReceiverPPMLAC::Eqz(KernelEvalContext* ctx, const NdArrayRef& z) {
   auto* comm = ctx->getState<Communicator>();
+  const auto field = z.eltype().as<Ring2k>()->field();
   NdArrayRef u = comm->reduce(ReduceOp::ADD, z, comm->getRank(), "recv(z-a)");
 
-  return RpcCall(&TrustedService_Stub::Eqz, channel_, absl::MakeSpan(&u, 1));
+  return RpcCall(&TrustedService_Stub::Eqz, channel_, field, z.shape(),
+                 absl::MakeSpan(&u, 1));
 }
 
 NdArrayRef ReceiverPPMLAC::Perm(KernelEvalContext* ctx, const NdArrayRef& x,
                                 const NdArrayRef& perm, size_t perm_rank) {
   auto* comm = ctx->getState<Communicator>();
-  auto u = comm->reduce(ReduceOp::ADD, x, comm->getRank(), "recv(x-a)");
+  const auto field = x.eltype().as<Ring2k>()->field();
+  std::vector<NdArrayRef> inputs(2);
+  inputs[0] = comm->reduce(ReduceOp::ADD, x, comm->getRank(), "recv(x-a)");
 
-  return RpcCall(&TrustedService_Stub::Perm, channel_, absl::MakeSpan(&u, 1),
-                 perm.data<int64_t>(), perm.numel());
+  if (perm_rank == lctx_->Rank()) {
+    inputs[1] = perm;
+  } else {
+    inputs[1] = comm->recv(perm_rank, makeType<PShrTy>(), "recv(perm_mask)");
+  }
+
+  return RpcCall(&TrustedService_Stub::Perm, channel_, field, x.shape(),
+                 absl::MakeSpan(inputs), perm_rank);
 }
 
 }  // namespace spu::mpc::semi2k::ppmlac

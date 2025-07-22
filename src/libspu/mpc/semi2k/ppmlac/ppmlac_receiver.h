@@ -20,7 +20,7 @@
 
 namespace spu::mpc::semi2k::ppmlac {
 
-class ReceiverPPMLAC : public PPMLAC {
+class ReceiverPPMLAC final : public PPMLAC {
  public:
   struct Options : PPMLAC::Options {
     std::string trusted_server_host;
@@ -36,8 +36,6 @@ class ReceiverPPMLAC : public PPMLAC {
       : PPMLAC(lctx) {
     InitChannel(options);
   }
-
-  ~ReceiverPPMLAC() override = default;
 
   void Initialize() override;
 

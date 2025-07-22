@@ -22,9 +22,18 @@
 #include "libspu/core/prelude.h"
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/stream_reader.h"
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/trusted_chip.h"
+#include "libspu/mpc/semi2k/type.h"
+#include "libspu/mpc/utils/permute.h"
 #include "libspu/mpc/utils/ring_ops.h"
 
 #include "libspu/mpc/semi2k/ppmlac/trusted_chip/trusted_service.pb.h"
+
+namespace brpc {
+
+DECLARE_uint64(max_body_size);
+DECLARE_int64(socket_max_unwritten_bytes);
+
+}  // namespace brpc
 
 namespace spu::mpc::semi2k::ppmlac {
 
@@ -32,7 +41,7 @@ namespace {
 
 template <typename Request>
 std::vector<size_t> GetBufferLength(const Request& req) {
-  size_t field_size = SizeOf(static_cast<spu::FieldType>(req.field_type()));
+  size_t field_size = SizeOf(static_cast<FieldType>(req.field()));
   if constexpr (std::is_same_v<Request, MulRequest> ||
                 std::is_same_v<Request, AndRequest>) {
     return std::vector<size_t>(2, req.num_elements() * field_size);
@@ -42,6 +51,14 @@ std::vector<size_t> GetBufferLength(const Request& req) {
     return {req.num_elements() * field_size};
   } else if constexpr (std::is_same_v<Request, DotRequest>) {
     return {req.m() * req.k() * field_size, req.k() * req.n() * field_size};
+  } else if constexpr (std::is_same_v<Request, B2ARequest>) {
+    const PtType backtype = getBacktype(req.bshare_nbits());
+    int64_t num128 = CeilDiv(req.num_elements() * SizeOf(backtype),
+                             SizeOf(FieldType::FM128));
+    return {num128 * SizeOf(FieldType::FM128)};
+  } else if constexpr (std::is_same_v<Request, PermRequest>) {
+    const size_t p_share_size = makeType<PShrTy>().size();
+    return {req.num_elements() * field_size, req.num_elements() * p_share_size};
   } else {
     SPU_THROW("Not supported request type");
   }
@@ -127,9 +144,21 @@ class TrustedServiceImpl final : public TrustedService {
     HandleRequest(controller, request, done);
   }
 
+  void B2A(::google::protobuf::RpcController* controller,
+           const B2ARequest* request, Response* response,
+           ::google::protobuf::Closure* done) override {
+    HandleRequest(controller, request, done);
+  }
+
   void Eqz(google::protobuf::RpcController* controller,
            const EqzRequest* request, Response* response,
            google::protobuf::Closure* done) override {
+    HandleRequest(controller, request, done);
+  }
+
+  void Perm(google::protobuf::RpcController* controller,
+            const PermRequest* request, Response* response,
+            google::protobuf::Closure* done) override {
     HandleRequest(controller, request, done);
   }
 
@@ -170,6 +199,10 @@ class TrustedServiceImpl final : public TrustedService {
         z = AndImpl(static_cast<const AndRequest*>(req), bufs);
       } else if (type_name == TruncRequest::descriptor()->full_name()) {
         z = TruncImpl(static_cast<const TruncRequest*>(req), bufs);
+      } else if (type_name == B2ARequest::descriptor()->full_name()) {
+        z = B2AImpl(static_cast<const B2ARequest*>(req), bufs);
+      } else if (type_name == PermRequest::descriptor()->full_name()) {
+        z = PermImpl(static_cast<const PermRequest*>(req), bufs);
       } else {
         SPU_THROW("Not supported request type");
       }
@@ -181,151 +214,214 @@ class TrustedServiceImpl final : public TrustedService {
     reader->WaitClosed();  // TODO: move it
   }
 
-NdArrayRef MulImpl(const MulRequest* request, const std::vector<butil::IOBuf>& bufs) {
-  auto field_type = static_cast<spu::FieldType>(request->field_type());
-  auto element_type = makeType<RingTy>(field_type);
-  int64_t num_elements = request->num_elements();
-  Shape shape = {1, num_elements};
-
-  NdArrayRef u(element_type, shape);
-  NdArrayRef v(element_type, shape);
-  bufs.at(0).copy_to(u.data<void>());
-  bufs.at(1).copy_to(v.data<void>());
-
-  std::vector<NdArrayRef> r1 = chip_.GenRand(field_type, shape);
-  NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
-
-  std::vector<NdArrayRef> r2 = chip_.GenRand(field_type, shape);
-  NdArrayRef y = std::accumulate(r2.begin(), r2.end(), v, ring_add);
-
-  std::vector<NdArrayRef> r3 = chip_.GenRand(field_type, shape);
-
-  return std::accumulate(r3.begin(), r3.end(), ring_mul(x, y), ring_sub);
-}
-
-NdArrayRef SquareImpl(const SquareRequest* request,
-                      const std::vector<butil::IOBuf>& bufs) {
-  auto field_type = static_cast<spu::FieldType>(request->field_type());
-  auto element_type = makeType<RingTy>(field_type);
-  int64_t num_elements = request->num_elements();
-  Shape shape = {1, num_elements};
-
-  NdArrayRef u(element_type, shape);
-  bufs.at(0).copy_to(u.data<void>());
-
-  std::vector<NdArrayRef> r1 = chip_.GenRand(field_type, shape);
-  NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
-
-  std::vector<NdArrayRef> r2 = chip_.GenRand(field_type, shape);
-
-  return std::accumulate(r2.begin(), r2.end(), ring_mul(x, x), ring_sub);
-}
-
-NdArrayRef DotImpl(const DotRequest* request,
-                   const std::vector<butil::IOBuf>& bufs) {
-  auto field_type = static_cast<spu::FieldType>(request->field_type());
-  auto element_type = makeType<RingTy>(field_type);
-  int64_t m = request->m();
-  int64_t n = request->n();
-  int64_t k = request->k();
-
-  NdArrayRef u(element_type, {m, k});
-  NdArrayRef v(element_type, {k, n});
-  bufs.at(0).copy_to(u.data<void>());
-  bufs.at(1).copy_to(v.data<void>());
-
-  std::vector<NdArrayRef> r1 = chip_.GenRand(field_type, {m, k});
-  NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
-
-  std::vector<NdArrayRef> r2 = chip_.GenRand(field_type, {k, n});
-  NdArrayRef y = std::accumulate(r2.begin(), r2.end(), v, ring_add);
-
-  std::vector<NdArrayRef> r3 = chip_.GenRand(field_type, {m, n});
-  return std::accumulate(r3.begin(), r3.end(), ring_mmul(x, y), ring_sub);
-}
-
-NdArrayRef AndImpl(const AndRequest* request,
-                   const std::vector<butil::IOBuf>& bufs) {
-  auto field_type = static_cast<spu::FieldType>(request->field_type());
-  auto element_type = makeType<RingTy>(field_type);
-  int64_t num_elements = request->num_elements();
-  Shape shape = {1, num_elements};
-
-  NdArrayRef u(element_type, shape);
-  NdArrayRef v(element_type, shape);
-  bufs.at(0).copy_to(u.data<void>());
-  bufs.at(1).copy_to(v.data<void>());
-
-  std::vector<NdArrayRef> r1 = chip_.GenRand(field_type, shape);
-  NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_xor);
-
-  std::vector<NdArrayRef> r2 = chip_.GenRand(field_type, shape);
-  NdArrayRef y = std::accumulate(r2.begin(), r2.end(), v, ring_xor);
-
-  std::vector<NdArrayRef> r3 = chip_.GenRand(field_type, shape);
-
-  return std::accumulate(r3.begin(), r3.end(), ring_and(x, y), ring_xor);
-}
-
-NdArrayRef TruncImpl(const TruncRequest* request,
+  NdArrayRef MulImpl(const MulRequest* request,
                      const std::vector<butil::IOBuf>& bufs) {
-  auto field_type = static_cast<spu::FieldType>(request->field_type());
-  auto element_type = makeType<RingTy>(field_type);
-  int64_t num_elements = request->num_elements();
-  Shape shape = {1, num_elements};
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    int64_t num_elements = request->num_elements();
+    Shape shape = {num_elements};
 
-  NdArrayRef u(element_type, shape);
-  bufs.at(0).copy_to(u.data<void>());
+    NdArrayRef u(eltype, shape);
+    NdArrayRef v(eltype, shape);
+    bufs.at(0).copy_to(u.data<void>());
+    bufs.at(1).copy_to(v.data<void>());
 
-  std::vector<NdArrayRef> r1 = chip_.GenRand(field_type, shape);
-  NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, shape);
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
 
-  std::vector<NdArrayRef> r2 = chip_.GenRand(field_type, shape);
+    std::vector<NdArrayRef> r2 = chip_.GenRand(eltype, shape);
+    NdArrayRef y = std::accumulate(r2.begin(), r2.end(), v, ring_add);
 
-  return std::accumulate(
-      r2.begin(), r2.end(),
-      ring_arshift(x, {static_cast<int64_t>(request->bits())}), ring_sub);
-}
+    std::vector<NdArrayRef> r3 = chip_.GenRand(eltype, shape);
 
-BitSet EqzImpl(const EqzRequest* request,
-               const std::vector<butil::IOBuf>& bufs) {
-  auto field = static_cast<spu::FieldType>(request->field_type());
-  auto element_type = makeType<RingTy>(field);
-  int64_t num_elements = request->num_elements();
-  Shape shape = {1, num_elements};
+    return std::accumulate(r3.begin(), r3.end(), ring_mul(x, y), ring_sub);
+  }
 
-  NdArrayRef u(element_type, shape);
-  bufs.at(0).copy_to(u.data<void>());
+  NdArrayRef SquareImpl(const SquareRequest* request,
+                        const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    int64_t num_elements = request->num_elements();
+    Shape shape = {num_elements};
 
-  std::vector<NdArrayRef> r1 = chip_.GenRand(field, shape);
-  NdArrayRef z = std::accumulate(r1.begin(), r1.end(), u, ring_add);
+    NdArrayRef u(eltype, shape);
+    bufs.at(0).copy_to(u.data<void>());
 
-  std::vector<BitSet> r2 = chip_.GenRand(num_elements);
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, shape);
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
 
-  BitSet out{static_cast<size_t>(num_elements)};
+    std::vector<NdArrayRef> r2 = chip_.GenRand(eltype, shape);
 
-  DISPATCH_ALL_FIELDS(field, [&]() {
-    using el_t = ring2k_t;
-    NdArrayView<el_t> _z(z);
+    return std::accumulate(r2.begin(), r2.end(), ring_mul(x, x), ring_sub);
+  }
 
-    pforeach(0, num_elements, [&](int64_t idx) {
-      _z[idx] == 0 ? out.Set(idx, true) : out.Set(idx, false);
+  NdArrayRef DotImpl(const DotRequest* request,
+                     const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    int64_t m = request->m();
+    int64_t n = request->n();
+    int64_t k = request->k();
+
+    NdArrayRef u(eltype, {m, k});
+    NdArrayRef v(eltype, {k, n});
+    bufs.at(0).copy_to(u.data<void>());
+    bufs.at(1).copy_to(v.data<void>());
+
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, {m, k});
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
+
+    std::vector<NdArrayRef> r2 = chip_.GenRand(eltype, {k, n});
+    NdArrayRef y = std::accumulate(r2.begin(), r2.end(), v, ring_add);
+
+    std::vector<NdArrayRef> r3 = chip_.GenRand(eltype, {m, n});
+    return std::accumulate(r3.begin(), r3.end(), ring_mmul(x, y), ring_sub);
+  }
+
+  NdArrayRef AndImpl(const AndRequest* request,
+                     const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    int64_t num_elements = request->num_elements();
+    Shape shape = {num_elements};
+
+    NdArrayRef u(eltype, shape);
+    NdArrayRef v(eltype, shape);
+    bufs.at(0).copy_to(u.data<void>());
+    bufs.at(1).copy_to(v.data<void>());
+
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, shape);
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_xor);
+
+    std::vector<NdArrayRef> r2 = chip_.GenRand(eltype, shape);
+    NdArrayRef y = std::accumulate(r2.begin(), r2.end(), v, ring_xor);
+
+    std::vector<NdArrayRef> r3 = chip_.GenRand(eltype, shape);
+
+    return std::accumulate(r3.begin(), r3.end(), ring_and(x, y), ring_xor);
+  }
+
+  NdArrayRef TruncImpl(const TruncRequest* request,
+                       const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    int64_t num_elements = request->num_elements();
+    Shape shape = {num_elements};
+
+    NdArrayRef u(eltype, shape);
+    bufs.at(0).copy_to(u.data<void>());
+
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, shape);
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
+
+    std::vector<NdArrayRef> r2 = chip_.GenRand(eltype, shape);
+
+    return std::accumulate(
+        r2.begin(), r2.end(),
+        ring_arshift(x, {static_cast<int64_t>(request->bits())}), ring_sub);
+  }
+
+  NdArrayRef B2AImpl(const B2ARequest* request,
+                     const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    int64_t num_elements = request->num_elements();
+
+    const PtType backtype = getBacktype(request->bshare_nbits());
+    int64_t num128 =
+        CeilDiv(num_elements * SizeOf(backtype), SizeOf(FieldType::FM128));
+
+    NdArrayRef u(makeType<RingTy>(FieldType::FM128), {num128});
+    bufs.at(0).copy_to(u.data<void>());
+
+    std::vector<NdArrayRef> r1 =
+        chip_.GenRand(makeType<RingTy>(FieldType::FM128), {num128});
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_xor);
+
+    std::vector<NdArrayRef> r2 =
+        chip_.GenRand(makeType<RingTy>(field), {num_elements});
+
+    NdArrayRef out(makeType<RingTy>(field), {num_elements});
+
+    DISPATCH_ALL_FIELDS(field, [&]() {
+      using T = ring2k_t;
+      NdArrayView<T> _out(out);
+
+      DISPATCH_UINT_PT_TYPES(backtype, [&]() {
+        using V = ScalarT;
+        NdArrayView<V> _x(x);
+        pforeach(0, num_elements, [&](int64_t idx) { _out[idx] = _x[idx]; });
+      });
     });
 
-    out = std::accumulate(r2.begin(), r2.end(), out, BitSet::Xor);
-  });
+    return std::accumulate(r2.begin(), r2.end(), out, ring_sub);
+  }
 
-  return out;
-}
+  BitSet EqzImpl(const EqzRequest* request,
+                 const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    const int64_t num_elements = request->num_elements();
+    Shape shape = {num_elements};
 
-private:
-TrustedChip chip_;
+    NdArrayRef u(eltype, shape);
+    bufs.at(0).copy_to(u.data<void>());
+
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, shape);
+    NdArrayRef z = std::accumulate(r1.begin(), r1.end(), u, ring_add);
+
+    std::vector<BitSet> r2 = chip_.GenRandBits(num_elements);
+
+    BitSet out{static_cast<size_t>(num_elements)};
+
+    DISPATCH_ALL_FIELDS(field, [&]() {
+      using el_t = ring2k_t;
+      NdArrayView<el_t> _z(z);
+
+      pforeach(0, num_elements, [&](int64_t idx) {
+        _z[idx] == 0 ? out.Set(idx, true) : out.Set(idx, false);
+      });
+
+      out = std::accumulate(r2.begin(), r2.end(), out, BitSet::Xor);
+    });
+
+    return out;
+  }
+
+  NdArrayRef PermImpl(const PermRequest* request,
+                      const std::vector<butil::IOBuf>& bufs) {
+    const auto field = static_cast<FieldType>(request->field());
+    const Type eltype = makeType<RingTy>(field);
+    int64_t num_elements = request->num_elements();
+    Shape shape = {num_elements};
+
+    NdArrayRef u(eltype, shape);
+    bufs.at(0).copy_to(u.data<void>());
+
+    NdArrayRef perm(makeType<PShrTy>(), shape);
+    bufs.at(1).copy_to(perm.data<void>());
+
+    std::vector<NdArrayRef> r1 = chip_.GenRand(eltype, shape);
+    NdArrayRef x = std::accumulate(r1.begin(), r1.end(), u, ring_add);
+
+    std::vector<NdArrayRef> r2 = chip_.GenRand(eltype, shape);
+
+    if (chip_.HasPRNG(request->perm_rank())) {
+      NdArrayRef rand_perm = chip_.GenRandPerm(request->perm_rank(), shape);
+      perm = applyInvPerm(perm, rand_perm);
+    }
+
+    return std::accumulate(r2.begin(), r2.end(), applyInvPerm(x, perm),
+                           ring_sub);
+  }
+
+ private:
+  TrustedChip chip_;
 };
 
 std::unique_ptr<brpc::Server> RunServer(const TrustedServerOptions& options) {
-  // brpc::FLAGS_max_body_size = std::numeric_limits<uint64_t>::max();
-  // brpc::FLAGS_socket_max_unwritten_bytes =
-  //     std::numeric_limits<int64_t>::max() / 2;
+  brpc::FLAGS_max_body_size = std::numeric_limits<uint64_t>::max();
+  brpc::FLAGS_socket_max_unwritten_bytes =
+      std::numeric_limits<int64_t>::max() / 2;
 
   auto server = std::make_unique<brpc::Server>();
   auto svc = std::make_unique<TrustedServiceImpl>(

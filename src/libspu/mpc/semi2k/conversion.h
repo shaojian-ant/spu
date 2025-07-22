@@ -88,6 +88,32 @@ class B2A_Disassemble : public DisassembleKernel {
                                const NdArrayRef& x) const override;
 };
 
+class B2A_PPMLAC : public UnaryKernel {
+public:
+  static constexpr const char* kBindName() { return "b2a"; }
+
+  ce::CExpr latency() const override {
+    return (Log(ce::K()) + 1) * Log(ce::N())  // A2B
+           + Log(ce::K() + 1)                 // add_bb
+           + 1                                // reveal
+        ;
+  }
+
+  ce::CExpr comm() const override {
+    const auto n_1 = ce::N() - 1;
+    return (2 * Log(ce::K()) + 1) * 2 * ce::K() * n_1 * n_1  // A2B
+           + (2 * Log(ce::K()) + 1) * 2 * ce::K()            // add_bb
+        ;
+  }
+
+  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& x) const override;
+};
+
+class B2A_PPMLAC_Disassemble : public B2A_PPMLAC {
+public:
+  static constexpr const char* kBindName() { return "b2a_disassemble"; }
+};
+
 // Note: current only for 2PC.
 class MsbA2B : public UnaryKernel {
  public:
