@@ -72,6 +72,16 @@ spu_cc_library(
     ],
 )
 
+spu_cc_library(
+    name = "drbg_state",
+    srcs = ["drbg_state.cc"],
+    hdrs = ["drbg_state.h"],
+    deps = [
+        "prg_state",
+        "@yacl//yacl/crypto/utils/drbg",
+    ],
+)
+
 spu_cc_test(
     name = "prg_state_test",
     srcs = ["prg_state_test.cc"],
@@ -89,5 +99,14 @@ spu_cc_library(
         "//libspu/core:ndarray_ref",
         "//libspu/mpc/utils:ring_ops",
         "@yacl//yacl/crypto/tools:prg",
+    ],
+)
+
+spu_cc_library(
+    name = "drbg_tensor",
+    hdrs = ["drbg_tensor.h"],
+    deps = [
+        "//libspu/core:ndarray_ref",
+        "@yacl//yacl/crypto/utils/drbg",
     ],
 )

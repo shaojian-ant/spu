@@ -15,6 +15,7 @@
 #include "libspu/mpc/semi2k/protocol.h"
 
 #include "libspu/mpc/common/communicator.h"
+#include "libspu/mpc/common/drbg_state.h"
 #include "libspu/mpc/common/prg_state.h"
 #include "libspu/mpc/common/pv2k.h"
 #include "libspu/mpc/semi2k/arithmetic.h"
@@ -35,7 +36,11 @@ void regSemi2kProtocol(SPUContext* ctx,
   ctx->prot()->addState<Communicator>(lctx);
 
   // register random states & kernels.
-  ctx->prot()->addState<PrgState>(lctx);
+  if (ctx->config().drbg_type() == spu::RuntimeConfig::UnspecDrbg) {
+    ctx->prot()->addState<PrgState>(lctx);
+  } else {
+    ctx->prot()->addState<DrbgState>(lctx);
+  }
 
   // add Z2k state.
   ctx->prot()->addState<Z2kState>(ctx->config().field());

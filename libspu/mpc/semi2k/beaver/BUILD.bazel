@@ -51,6 +51,7 @@ spu_cc_library(
     hdrs = ["trusted_party.h"],
     deps = [
         "//libspu/mpc/common:prg_tensor",
+        "//libspu/mpc/common:drbg_tensor",
         "//libspu/mpc/utils:permute",
         "//libspu/mpc/utils:ring_ops",
     ],
@@ -78,4 +79,14 @@ spu_cc_library(
         "@yacl//yacl/utils:parallel",
         "@yacl//yacl/utils:serialize",
     ],
+)
+
+spu_cc_library(
+    name = "beaver_ttp_drbg",
+    srcs = ["beaver_ttp_drbg.cc"],
+    hdrs = ["beaver_ttp_drbg.h"],
+    deps = [
+        ":beaver_ttp",
+        "//libspu/mpc/common:drbg_tensor",
+    ]
 )

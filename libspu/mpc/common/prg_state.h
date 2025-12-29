@@ -57,7 +57,7 @@ class PrgState : public State {
 
   NdArrayRef genPriv(FieldType field, const Shape& shape);
 
-  NdArrayRef genPubl(FieldType field, const Shape& shape);
+  virtual NdArrayRef genPubl(FieldType field, const Shape& shape);
 
   // Generate a random pair (r0, r1), where
   //   r1 = next_party.r0
@@ -66,9 +66,9 @@ class PrgState : public State {
   //
   // Note: ignore_first, ignore_second is for perf improvement.
   enum class GenPrssCtrl { Both, First, Second, None };
-  std::pair<NdArrayRef, NdArrayRef> genPrssPair(FieldType field,
-                                                const Shape& shape,
-                                                GenPrssCtrl ctrl);
+  virtual std::pair<NdArrayRef, NdArrayRef> genPrssPair(FieldType field,
+                                                        const Shape& shape,
+                                                        GenPrssCtrl ctrl);
 
   template <typename T>
   void fillPrssPair(T* r0, T* r1, size_t numel, GenPrssCtrl ctrl) {

@@ -1,4 +1,4 @@
-// Copyright 2021 Ant Group Co., Ltd.
+// Copyright 2024 Ant Group Co., Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,57 +14,23 @@
 
 #pragma once
 
-#include <memory>
+#include "yacl/crypto/utils/drbg/drbg.h"
 
-#include "brpc/channel.h"
-#include "yacl/link/context.h"
-
-#include "libspu/mpc/common/prg_tensor.h"
-#include "libspu/mpc/semi2k/beaver/beaver_interface.h"
-
-#include "libspu/mpc/semi2k/beaver/ttp_server/service.pb.h"
+#include "libspu/mpc/common/drbg_tensor.h"
+#include "libspu/mpc/semi2k/beaver/beaver_ttp.h"
 
 namespace spu::mpc::semi2k {
 
-class BeaverTtp : public Beaver {
+class BeaverTtpDrbg final : public BeaverTtp {
  public:
-  struct Options {
-    std::string server_host;
-    std::string session_id;
-    size_t adjust_rank;
+  explicit BeaverTtpDrbg(std::shared_ptr<yacl::link::Context> lctx,
+                         Options ops);
 
-    std::string brpc_channel_protocol = "baidu_std";
-    std::string brpc_channel_connection_type = "single";
-    std::string brpc_load_balancer_name;
-    int32_t brpc_timeout_ms = 10 * 1000;
-    int32_t brpc_max_retry = 5;
-
-    // TODO: TLS ops for client/server two-way authentication
-  };
-
- protected:
-  std::shared_ptr<yacl::link::Context> lctx_;
-
-  PrgSeed seed_;
-
-  PrgCounter counter_;
-
-  Options options_;
-
-  size_t child_counter_;
-
-  mutable brpc::Channel channel_;
-
- public:
-  explicit BeaverTtp(std::shared_ptr<yacl::link::Context> lctx, Options ops);
-
-  ~BeaverTtp() override;
+  ~BeaverTtpDrbg() override = default;
 
   Triple Mul(FieldType field, const Shape& shape) override;
 
   Triple And(FieldType field, const Shape& shape) override;
-
-  Triple Dot(FieldType field, int64_t M, int64_t N, int64_t K) override;
 
   Pair Trunc(FieldType field, const Shape& shape, size_t bits) override;
 
@@ -80,8 +46,10 @@ class BeaverTtp : public Beaver {
   Pair Eqz(FieldType field, const Shape& shape) override;
 
  private:
-  virtual NdArrayRef CreateArray(FieldType field, int64_t m, int64_t n,
-                                 PrgArrayDesc& desc);
+  NdArrayRef CreateArray(FieldType field, int64_t m, int64_t n,
+                         PrgArrayDesc& desc) override;
+
+  std::unique_ptr<yacl::crypto::Drbg> drbg_;
 };
 
 }  // namespace spu::mpc::semi2k

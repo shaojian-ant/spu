@@ -17,8 +17,10 @@
 #include <shared_mutex>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "spdlog/spdlog.h"
+#include "yacl/crypto/utils/drbg/drbg.h"
 #include "yacl/utils/serialize.h"
 
 #include "libspu/core/ndarray_ref.h"
@@ -62,15 +64,25 @@ struct dependent_false : std::false_type {};
 
 template <class AdjustRequest>
 std::vector<NdArrayRef> AdjustImpl(const AdjustRequest& req,
-                                   absl::Span<const PrgSeed> seeds) {
+                                   absl::Span<const PrgSeed> seeds,
+                                   absl::Span<const DrbgPtr> drbgs,
+                                   int64_t& pre_counter) {
   std::vector<NdArrayRef> ret;
   auto descs = BuildDescs(req);
   if constexpr (std::is_same_v<AdjustRequest, AdjustMulRequest>) {
     auto adjust = TrustedParty::adjustMul(descs, seeds);
     ret.push_back(std::move(adjust));
   } else if constexpr (std::is_same_v<AdjustRequest, AdjustDotRequest>) {
-    auto adjust =
-        TrustedParty::adjustDot(descs, seeds, req.m(), req.n(), req.k());
+    NdArrayRef adjust;
+    if (absl::StartsWith(req.session_id(), kIcBeaverSessionPrefix)) {
+      adjust = TrustedParty::adjustDot(descs, drbgs, req.m(), req.n(), req.k());
+      int64_t cur_counter = descs.back().prg_counter;
+      SPU_ENFORCE(cur_counter > pre_counter, "cur_counter {} <= pre_counter {}",
+                  cur_counter, pre_counter);
+      pre_counter = cur_counter;
+    } else {
+      adjust = TrustedParty::adjustDot(descs, seeds, req.m(), req.n(), req.k());
+    }
     ret.push_back(std::move(adjust));
   } else if constexpr (std::is_same_v<AdjustRequest, AdjustAndRequest>) {
     auto adjust = TrustedParty::adjustAnd(descs, seeds);
@@ -114,12 +126,15 @@ class ServiceImpl final : public BeaverService {
           adjust_rank(adjust_rank),
           seeds(world_size, 0),
           rank_ready(world_size, 0),
+          drbgs(world_size),
           session_ready(false) {}
 
     int32_t world_size;
     int32_t adjust_rank;
     std::vector<PrgSeed> seeds;
     std::vector<int8_t> rank_ready;
+    std::vector<DrbgPtr> drbgs;
+    int64_t pre_counter = -1;
     bool session_ready;
   };
   mutable std::shared_mutex mutex_;
@@ -221,7 +236,15 @@ class ServiceImpl final : public BeaverService {
         return;
       }
 
-      ss->seeds[rank] = prg_seed;
+      if (absl::StartsWith(session_id, kIcBeaverSessionPrefix)) {
+        // interconnection mode
+        ss->drbgs[rank] = yacl::crypto::DrbgFactory::Instance().Create(
+            "IC-HASH-DRBG", yacl::ArgLib = "Interconnection");
+        ss->drbgs[rank]->SetSeed(prg_seed);
+      } else {
+        ss->seeds[rank] = prg_seed;
+      }
+
       ss->rank_ready[rank] = 1;
       if (std::all_of(ss->rank_ready.cbegin(), ss->rank_ready.cend(),
                       [](int8_t r) { return r == 1; })) {
@@ -266,7 +289,7 @@ class ServiceImpl final : public BeaverService {
 
     std::vector<NdArrayRef> adjusts;
     try {
-      adjusts = AdjustImpl(*req, ss->seeds);
+      adjusts = AdjustImpl(*req, ss->seeds, ss->drbgs, ss->pre_counter);
     } catch (const std::exception& e) {
       auto err = fmt::format("adjust err {}", e.what());
       SPDLOG_ERROR("{}, session {}, client {}", err, session_id, client_side);

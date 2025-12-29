@@ -68,7 +68,8 @@ BeaverTfpUnsafe::Triple BeaverTfpUnsafe::Dot(FieldType field, int64_t m,
   auto c = prgCreateArray(field, {m, n}, seed_, &counter_, &descs[2]);
 
   if (lctx_->Rank() == 0) {
-    auto adjust = TrustedParty::adjustDot(descs, seeds_, m, n, k);
+    auto adjust =
+        TrustedParty::adjustDot(descs, absl::MakeConstSpan(seeds_), m, n, k);
     ring_add_(c, adjust);
   }
 

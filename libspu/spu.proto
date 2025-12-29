@@ -308,6 +308,17 @@ message RuntimeConfig {
   // low probability, which lead to huge calculation error.
   bool trunc_allow_msb_error = 72;
 
+  // Refer to https://csrc.nist.gov/pubs/sp/800/90/a/r1/final
+  enum DrbgType {
+    // Not using DRBG
+    UnspecDrbg = 0;
+    // Hash_DRBG
+    HashDrbg = 1;
+  }
+
+  // DRBG type, only works for function genPrssPair in semi2k for now
+  DrbgType drbg_type = 73;
+
   /// System related configurations start.
 
   // Experimental: DO NOT USE

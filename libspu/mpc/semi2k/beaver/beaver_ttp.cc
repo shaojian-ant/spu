@@ -221,9 +221,9 @@ BeaverTtp::Triple BeaverTtp::Dot(FieldType field, int64_t m, int64_t n,
                                  int64_t k) {
   std::vector<PrgArrayDesc> descs(3);
 
-  auto a = prgCreateArray(field, {m, k}, seed_, &counter_, descs.data());
-  auto b = prgCreateArray(field, {k, n}, seed_, &counter_, &descs[1]);
-  auto c = prgCreateArray(field, {m, n}, seed_, &counter_, &descs[2]);
+  auto a = CreateArray(field, m, k, descs[0]);
+  auto b = CreateArray(field, k, n, descs[1]);
+  auto c = CreateArray(field, m, n, descs[2]);
 
   if (lctx_->Rank() == options_.adjust_rank) {
     auto req = BuildAdjustRequest<beaver::ttp_server::AdjustDotRequest>(
@@ -356,4 +356,10 @@ BeaverTtp::Pair BeaverTtp::Eqz(FieldType field, const Shape& shape) {
 
   return {a, b};
 }
+
+NdArrayRef BeaverTtp::CreateArray(FieldType field, int64_t m, int64_t n,
+                                  PrgArrayDesc& desc) {
+  return prgCreateArray(field, {m, n}, seed_, &counter_, &desc);
+}
+
 }  // namespace spu::mpc::semi2k

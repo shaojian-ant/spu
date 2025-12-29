@@ -30,6 +30,7 @@ spu_cc_library(
     deps = [
         "//libspu/mpc/semi2k/beaver:beaver_tfp",
         "//libspu/mpc/semi2k/beaver:beaver_ttp",
+        "//libspu/mpc/semi2k/beaver:beaver_ttp_drbg",
     ],
 )
 
@@ -85,6 +86,7 @@ spu_cc_library(
         ":permute",
         ":state",
         "//libspu/mpc/common:prg_state",
+        "//libspu/mpc/common:drbg_state",
         "//libspu/mpc/standard_shape:protocol",
     ],
 )

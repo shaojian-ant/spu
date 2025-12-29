@@ -16,10 +16,13 @@
 
 #include <memory>
 
+#include "absl/strings/match.h"
+
 #include "libspu/core/object.h"
 #include "libspu/mpc/semi2k/beaver/beaver_interface.h"
 #include "libspu/mpc/semi2k/beaver/beaver_tfp.h"
 #include "libspu/mpc/semi2k/beaver/beaver_ttp.h"
+#include "libspu/mpc/semi2k/beaver/beaver_ttp_drbg.h"
 
 namespace spu::mpc {
 
@@ -45,7 +48,12 @@ class Semi2kState : public State {
       const auto& sid = conf.ttp_beaver_config().session_id();
       ops.session_id = sid.empty() ? lctx->Id() : sid;
       // TODO: TLS & brpc options.
-      beaver_ = std::make_unique<semi2k::BeaverTtp>(lctx, std::move(ops));
+      if (absl::StartsWith(conf.ttp_beaver_config().session_id(),
+                           kIcBeaverSessionPrefix)) {
+        beaver_ = std::make_unique<semi2k::BeaverTtpDrbg>(lctx, std::move(ops));
+      } else {
+        beaver_ = std::make_unique<semi2k::BeaverTtp>(lctx, std::move(ops));
+      }
     } else {
       SPU_THROW("unsupported beaver type {}", conf.beaver_type());
     }
